@@ -262,6 +262,19 @@ def run_analysis(
         )
         runs.append(record)
         results.extend(produced)
+    for estimator, reason in sorted(dict(features.meta.get("pitch_unavailable") or {}).items()):
+        runs.append(
+            {
+                "analyzer_id": f"pitch_estimator.{estimator}",
+                "analyzer_version": "n/a",
+                "category": "pitch",
+                "status": "unavailable",
+                "validity": Validity.MODEL_UNAVAILABLE.value,
+                "error": reason,
+                "result_count": 0,
+                "duration_ms": 0.0,
+            }
+        )
     progress(0.99, "Summarising")
     return RecordingAnalysis(
         features=features,

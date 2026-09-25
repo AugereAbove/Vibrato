@@ -69,6 +69,8 @@ export function BottomPanel({ data, mode }: { data: WorkstationData; mode: ViewM
             take={data.take}
             refContamination={data.refAnalysis?.contamination ?? null}
             takeContamination={data.takeAnalysis?.contamination ?? null}
+            refRuns={data.refAnalysis?.runs ?? []}
+            takeRuns={data.takeAnalysis?.runs ?? []}
           />
         )
         break

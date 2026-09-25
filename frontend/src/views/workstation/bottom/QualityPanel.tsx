@@ -1,18 +1,63 @@
-import type { QualityReport, Recording } from '../../../api/types'
+import type { AnalyzerRun, QualityReport, Recording } from '../../../api/types'
 import { Badge } from '../../../components/ui/Badge'
 import { EmptyState } from '../../../components/ui/Feedback'
 import { Icon } from '../../../components/ui/Icon'
 import { CATEGORY_ORDER, categoryLabel } from '../../../lib/categories'
-import { formatDb, formatDuration, formatHz, formatPercent, formatSeconds } from '../../../lib/format'
+import {
+  formatDb,
+  formatDuration,
+  formatHz,
+  formatPercent,
+  formatSeconds,
+  humanize,
+} from '../../../lib/format'
+
+const RUN_STATUS: Record<AnalyzerRun['status'], string> = {
+  ok: 'ran',
+  unavailable: 'model unavailable',
+  failed: 'failed',
+  disabled: 'turned off',
+}
+
+function runName(id: string): string {
+  const estimator = id.match(/^pitch_estimator\.(.+)$/)
+  if (estimator) return `${estimator[1].toUpperCase()} pitch estimator`
+  return humanize(id)
+}
+
+function Coverage({ runs }: { runs: AnalyzerRun[] }) {
+  const gaps = runs.filter((run) => run.status !== 'ok')
+  if (runs.length === 0) return null
+  return (
+    <div className="qc-coverage">
+      <span className="eyebrow">Analysis coverage</span>
+      {gaps.length === 0 ? (
+        <p className="small good-text">All {runs.length} analyzers ran.</p>
+      ) : (
+        <ul className="plain-list small">
+          {gaps.map((run) => (
+            <li key={run.analyzer_id}>
+              <Badge tone={run.status === 'failed' ? 'bad' : 'warn'}>{RUN_STATUS[run.status]}</Badge>{' '}
+              <strong>{runName(run.analyzer_id)}</strong>
+              {run.error ? <span className="muted"> — {run.error}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function Report({
   recording,
   tone,
   contamination,
+  runs,
 }: {
   recording: Recording
   tone: 'ref' | 'take'
   contamination: { score: number; evidence: string[] } | null
+  runs: AnalyzerRun[]
 }) {
   const qc: QualityReport | null = recording.qc
   if (!qc) return <EmptyState compact title="No quality report" />
@@ -102,6 +147,7 @@ function Report({
           Possible contamination ({formatPercent(contamination.score)}): {contamination.evidence.join('; ')}
         </p>
       ) : null}
+      <Coverage runs={runs} />
     </div>
   )
 }
@@ -111,17 +157,25 @@ export function QualityPanel({
   take,
   refContamination,
   takeContamination,
+  refRuns,
+  takeRuns,
 }: {
   reference: Recording | null
   take: Recording | null
   refContamination: { score: number; evidence: string[] } | null
   takeContamination: { score: number; evidence: string[] } | null
+  refRuns: AnalyzerRun[]
+  takeRuns: AnalyzerRun[]
 }) {
   if (!reference && !take) return <EmptyState compact title="No recordings yet" />
   return (
     <div className="quality-panel">
-      {reference ? <Report recording={reference} tone="ref" contamination={refContamination} /> : null}
-      {take ? <Report recording={take} tone="take" contamination={takeContamination} /> : null}
+      {reference ? (
+        <Report recording={reference} tone="ref" contamination={refContamination} runs={refRuns} />
+      ) : null}
+      {take ? (
+        <Report recording={take} tone="take" contamination={takeContamination} runs={takeRuns} />
+      ) : null}
     </div>
   )
 }

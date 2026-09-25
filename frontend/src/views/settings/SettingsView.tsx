@@ -335,6 +335,8 @@ function PrivacyTool() {
 export function SettingsView({ section }: { section?: string }) {
   const schema = usePreferenceSchema()
   const values = usePrefsStore((s) => s.values)
+  const models = useModels()
+  const crepeMissing = models.data?.find((model) => model.id === 'crepe')?.available === false
   const [query, setQuery] = useState('')
   const active = (SECTIONS.find((s) => s.toLowerCase() === (section ?? '').toLowerCase()) ??
     'Audio') as Section
@@ -412,6 +414,12 @@ export function SettingsView({ section }: { section?: string }) {
               <div key={item.key} className="setting-row">
                 {query ? <span className="eyebrow">{item.section}</span> : null}
                 <Field item={item} value={values[item.key] ?? schema.data?.defaults[item.key] ?? null} />
+                {item.key === 'analysis.use_crepe' && values[item.key] === true && crepeMissing ? (
+                  <p className="small warn-text">
+                    CREPE is not installed, so pitch still uses Praat and YIN and each analysis lists CREPE as
+                    unavailable. Install it with pip install torch torchcrepe, then re-analyse.
+                  </p>
+                ) : null}
               </div>
             ))}
             {filtered.length === 0 && !schema.loading ? (

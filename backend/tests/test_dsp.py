@@ -132,3 +132,18 @@ def test_intensity_envelope_follows_known_amplitude() -> None:
     start = features.tracks["intensity_db"][features.frame(0.8)]
     end = features.tracks["intensity_db"][features.frame(3.2)]
     assert end - start == pytest.approx(12 * (3.2 - 0.8) / 3.0, abs=1.0)
+
+
+def test_requested_but_missing_crepe_is_reported() -> None:
+    if estimator_status()["crepe"]["available"]:
+        pytest.skip("CREPE is installed in this environment")
+    from vibrato.analysis.pipeline import run_analysis
+
+    x = pad(harmonic_tone(np.full(SR * 2, 220.0)))
+    analysis = run_analysis(x, SR, -90.0, options={"use_crepe": True})
+    runs = {run["analyzer_id"]: run for run in analysis.runs}
+    crepe = runs["pitch_estimator.crepe"]
+    assert crepe["status"] == "unavailable"
+    assert crepe["validity"] == "MODEL_UNAVAILABLE"
+    assert "not installed" in crepe["error"]
+    assert runs["pitch"]["status"] == "ok"

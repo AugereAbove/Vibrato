@@ -1230,7 +1230,8 @@ tr.sev-uncertain td {
   flex: none;
 }
 
-.qc-factors {
+.qc-factors,
+.qc-coverage {
   display: flex;
   flex-direction: column;
   gap: 4px;
