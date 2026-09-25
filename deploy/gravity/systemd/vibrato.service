@@ -1,0 +1,28 @@
+[Unit]
+Description=Vibrato vocal analysis service
+After=network.target
+
+[Service]
+Type=simple
+User=vibrato
+Group=vibrato
+WorkingDirectory=/opt/vibrato/app
+EnvironmentFile=/opt/vibrato/shared/vibrato.env
+ExecStart=/opt/vibrato/app/.venv/bin/python -m vibrato
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/vibrato/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
