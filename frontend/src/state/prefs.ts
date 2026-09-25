@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { create } from 'zustand'
+import { http } from '../api/client'
 import { preferencesApi } from '../api/endpoints'
 import type { PreferenceSchemaItem, PreferenceValue } from '../api/types'
 import { readStorage, writeStorage } from '../lib/storage'
@@ -60,12 +61,12 @@ export async function loadPrefs(): Promise<void> {
   try {
     const response = await preferencesApi.get()
     usePrefsStore.setState({
-      values: response.values,
+      values: { ...response.values, ...pending },
       defaults: response.defaults,
       schema: response.schema,
       loaded: true,
     })
-    cacheLocally(response.values)
+    cacheLocally(usePrefsStore.getState().values)
   } catch (error) {
     usePrefsStore.setState({ loaded: true })
     reportError(error, 'Settings could not be loaded')
@@ -84,6 +85,27 @@ async function flush(): Promise<void> {
   } catch (error) {
     reportError(error, 'Setting was not saved')
   }
+}
+
+function flushBeforeLeaving(): void {
+  if (Object.keys(pending).length === 0) return
+  if (flushTimer !== null) window.clearTimeout(flushTimer)
+  flushTimer = null
+  const body = JSON.stringify({ values: pending })
+  pending = {}
+  void fetch(http.url('/preferences'), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => undefined)
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushBeforeLeaving)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushBeforeLeaving()
+  })
 }
 
 export function setPref(key: string, value: PreferenceValue): void {

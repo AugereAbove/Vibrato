@@ -47,7 +47,11 @@ function Field({ item, value }: { item: PreferenceSchemaItem; value: PreferenceV
   const label = (
     <span>
       {item.label}
-      {item.key.startsWith('scoring.') ? null : <span className="setting-key">{item.key}</span>}
+      {item.key.startsWith('scoring.') ? null : (
+        <span className="setting-key" aria-hidden>
+          {item.key}
+        </span>
+      )}
     </span>
   )
   switch (item.type) {

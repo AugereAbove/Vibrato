@@ -77,7 +77,7 @@ export function CoachPanel({
               score={overall.score}
               confidence={overall.confidence}
               size={40}
-              label="Overall convenience score"
+              label="Overall score"
               previous={comparison.previous?.overall}
             />
           </span>
@@ -107,7 +107,13 @@ export function CoachPanel({
               {comparison.warnings.join(' ')}
             </Callout>
           ) : null}
-          {top.length === 0 ? (
+          {top.length === 0 && overall.score === null ? (
+            <EmptyState compact icon="alert" title="This take could not be measured reliably">
+              Too little of the take could be matched to the reference to say what differs. Sing the same
+              passage as the reference, close to the microphone and without backing music, or add manual
+              alignment anchors.
+            </EmptyState>
+          ) : top.length === 0 ? (
             <EmptyState compact icon="check" title="No reliable differences stand out">
               Every measured category is within its tolerance, or the remaining differences are too uncertain
               to call. Try a harder passage, or look at the raw measurements.

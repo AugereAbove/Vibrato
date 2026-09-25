@@ -297,7 +297,17 @@ export function RecordDialog({
     } else {
       list.push({ samples: body, sampleRate: capture.sampleRate, peak: peakLevel(body), keep: true })
     }
-    setPasses(list.filter((p) => p.samples.length > capture.sampleRate * 0.3))
+    const kept = list.filter((p) => p.samples.length > capture.sampleRate * 0.3)
+    if (kept.length === 0) {
+      pushToast({
+        kind: 'warning',
+        title: 'Nothing was recorded',
+        body: 'Recording stopped during the count-in or lasted less than a third of a second.',
+      })
+      setPhase('setup')
+      return
+    }
+    setPasses(kept)
     setPhase('review')
   }, [withReference])
 

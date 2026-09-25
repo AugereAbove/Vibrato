@@ -13,31 +13,25 @@ function stripExtension(name: string): string {
   return name.replace(/\.[a-z0-9]+$/i, '')
 }
 
-export function ImportDialog({
-  projectId,
-  reference,
-  onImported,
-}: {
+interface ImportDialogProps {
   projectId: string
   reference: Recording | null
   onImported?: (recording: Recording) => void
-}) {
+}
+
+export function ImportDialog(props: ImportDialogProps) {
+  const session = useImportStore((state) => state.session)
+  return <ImportDialogBody key={session} {...props} />
+}
+
+function ImportDialogBody({ projectId, reference, onImported }: ImportDialogProps) {
   const { open, kind, files } = useImportStore()
-  const [name, setName] = useState('')
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [lyrics, setLyrics] = useState('')
-  const [primary, setPrimary] = useState(true)
+  const [primary, setPrimary] = useState(!reference)
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const frame = window.requestAnimationFrame(() => {
-      setName(files.length === 1 ? stripExtension(files[0].name) : '')
-      setLyrics('')
-      setPrimary(!reference)
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [open, files, reference])
+  const name = nameDraft ?? (files.length === 1 ? stripExtension(files[0].name) : '')
 
   const close = () => useImportStore.setState({ open: false, files: [] })
   const submit = async () => {
@@ -147,7 +141,7 @@ export function ImportDialog({
           <TextField
             label="Name"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => setNameDraft(event.target.value)}
             placeholder="Recording name"
           />
         ) : null}
