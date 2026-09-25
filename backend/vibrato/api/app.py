@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -46,6 +48,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    if active.trusted_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(active.trusted_hosts))
+    if active.allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(active.allowed_origins),
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.add_middleware(GZipMiddleware, minimum_size=2048)
     install_error_handlers(app)
     for module in (projects, recordings, analysis, comparisons, extras, system):

@@ -31,6 +31,11 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_list(name: str) -> list[str]:
+    raw = os.environ.get(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -42,6 +47,9 @@ class Settings:
     max_upload_bytes: int = 1024 * 1024 * 1024
     max_duration_s: float = 20 * 60.0
     min_duration_s: float = 0.25
+    app_base_url: str | None = None
+    allowed_origins: tuple[str, ...] = ()
+    trusted_hosts: tuple[str, ...] = ()
     extra: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -102,6 +110,9 @@ def load_settings() -> Settings:
         workers=max(1, _env_int("VIBRATO_WORKERS", 2)),
         deterministic=_env_bool("VIBRATO_DETERMINISTIC", False),
         frontend_dist=dist if dist.exists() else None,
+        app_base_url=os.environ.get("VIBRATO_APP_BASE_URL") or None,
+        allowed_origins=tuple(_env_list("VIBRATO_ALLOWED_ORIGINS")),
+        trusted_hosts=tuple(_env_list("VIBRATO_TRUSTED_HOSTS")),
     )
 
 

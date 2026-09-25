@@ -227,3 +227,34 @@ def test_serves_built_frontend(tmp_path) -> None:
         missing = app.get("/api/does-not-exist")
         assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
         assert app.get("/api/health").json()["status"] == "ok"
+
+
+def test_allowed_origins_and_trusted_hosts_are_configurable(tmp_path) -> None:
+    from vibrato.api.app import create_app
+    from vibrato.config import Settings
+
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        workers=1,
+        allowed_origins=("http://localhost:5173",),
+        trusted_hosts=("vibrato.local", "127.0.0.1"),
+    )
+    with TestClient(create_app(settings), base_url="http://vibrato.local") as app:
+        ok = app.get(
+            "/api/health",
+            headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"},
+        )
+        assert ok.status_code == 200
+        assert ok.headers["access-control-allow-origin"] == "http://localhost:5173"
+        untrusted = app.get("/api/health", headers={"Host": "evil.example.com"})
+        assert untrusted.status_code == 400
+
+
+def test_no_configured_hosts_means_unrestricted(tmp_path) -> None:
+    from vibrato.api.app import create_app
+    from vibrato.config import Settings
+
+    settings = Settings(data_dir=tmp_path / "data", workers=1)
+    with TestClient(create_app(settings)) as app:
+        response = app.get("/api/health", headers={"Host": "anything.example.com"})
+        assert response.status_code == 200
