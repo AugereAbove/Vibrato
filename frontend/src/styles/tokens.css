@@ -1,0 +1,180 @@
+:root {
+  --font-sans:
+    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas,
+    monospace;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --text-3xl: 34px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 110ms;
+  --dur: 180ms;
+  --dur-slow: 320ms;
+  --topbar-h: 48px;
+  --transport-h: 56px;
+  --z-panel: 10;
+  --z-sticky: 20;
+  --z-popover: 60;
+  --z-modal: 80;
+  --z-toast: 90;
+  --z-tooltip: 100;
+
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --bg-sunken: #08090d;
+  --surface-1: #11141b;
+  --surface-2: #161a23;
+  --surface-3: #1d222d;
+  --surface-4: #252b38;
+  --surface-hover: rgba(255, 255, 255, 0.045);
+  --surface-active: rgba(255, 255, 255, 0.08);
+  --overlay: rgba(4, 6, 10, 0.62);
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(154, 140, 255, 0.85);
+  --text-1: #e9ecf3;
+  --text-2: #a5adbd;
+  --text-3: #6c7588;
+  --text-4: #4c5465;
+  --text-on-accent: #0c0b14;
+  --accent: #9a8cff;
+  --accent-strong: #b3a8ff;
+  --accent-soft: rgba(154, 140, 255, 0.15);
+  --accent-glow: rgba(154, 140, 255, 0.35);
+  --ref: #f2b85b;
+  --ref-strong: #ffcf7f;
+  --ref-soft: rgba(242, 184, 91, 0.16);
+  --ref-line: rgba(242, 184, 91, 0.95);
+  --take: #52b6ff;
+  --take-strong: #85ccff;
+  --take-soft: rgba(82, 182, 255, 0.16);
+  --take-line: rgba(82, 182, 255, 0.95);
+  --synthetic: #e27ae6;
+  --synthetic-soft: rgba(226, 122, 230, 0.15);
+  --good: #47c78c;
+  --good-soft: rgba(71, 199, 140, 0.14);
+  --warn: #ff8a4c;
+  --warn-soft: rgba(255, 138, 76, 0.14);
+  --bad: #ff5a6e;
+  --bad-soft: rgba(255, 90, 110, 0.14);
+  --info: #7aa7ff;
+  --info-soft: rgba(122, 167, 255, 0.14);
+  --heat-0: rgba(255, 255, 255, 0.035);
+  --heat-1: #5b3a8a;
+  --heat-2: #a13f86;
+  --heat-3: #e4536b;
+  --heat-4: #ff8f4a;
+  --grid: rgba(255, 255, 255, 0.05);
+  --grid-strong: rgba(255, 255, 255, 0.1);
+  --piano-black: rgba(0, 0, 0, 0.22);
+  --piano-white: rgba(255, 255, 255, 0.012);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --cat-pitch: #8c9dff;
+  --cat-timing: #f5c451;
+  --cat-vowel: #4fd1c5;
+  --cat-vibrato: #b98cff;
+  --cat-dynamics: #ff9a6b;
+  --cat-phonation: #f27ab6;
+  --cat-articulation: #a3d86a;
+  --cat-breath: #8ec8f8;
+  --cat-timbre: #e7b465;
+  --cat-confidence: #8a93a6;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f5f8;
+  --bg-sunken: #eceef2;
+  --surface-1: #ffffff;
+  --surface-2: #f8f9fb;
+  --surface-3: #eef0f4;
+  --surface-4: #e3e6ec;
+  --surface-hover: rgba(15, 23, 42, 0.045);
+  --surface-active: rgba(15, 23, 42, 0.08);
+  --overlay: rgba(20, 24, 32, 0.38);
+  --border: rgba(15, 23, 42, 0.09);
+  --border-strong: rgba(15, 23, 42, 0.17);
+  --border-focus: rgba(98, 80, 230, 0.8);
+  --text-1: #141821;
+  --text-2: #4c5566;
+  --text-3: #7a8394;
+  --text-4: #a2a9b6;
+  --text-on-accent: #ffffff;
+  --accent: #6450e6;
+  --accent-strong: #523dd6;
+  --accent-soft: rgba(100, 80, 230, 0.1);
+  --accent-glow: rgba(100, 80, 230, 0.25);
+  --ref: #b8741a;
+  --ref-strong: #9a5f0f;
+  --ref-soft: rgba(184, 116, 26, 0.13);
+  --ref-line: rgba(184, 116, 26, 0.95);
+  --take: #1d78cf;
+  --take-strong: #155fa6;
+  --take-soft: rgba(29, 120, 207, 0.12);
+  --take-line: rgba(29, 120, 207, 0.95);
+  --synthetic: #a63fb3;
+  --synthetic-soft: rgba(166, 63, 179, 0.11);
+  --good: #13925a;
+  --good-soft: rgba(19, 146, 90, 0.11);
+  --warn: #d4560f;
+  --warn-soft: rgba(212, 86, 15, 0.1);
+  --bad: #d42a47;
+  --bad-soft: rgba(212, 42, 71, 0.1);
+  --info: #2f66d0;
+  --info-soft: rgba(47, 102, 208, 0.1);
+  --heat-0: rgba(15, 23, 42, 0.04);
+  --heat-1: #c9b8f2;
+  --heat-2: #e08fc3;
+  --heat-3: #ec6680;
+  --heat-4: #f28a3c;
+  --grid: rgba(15, 23, 42, 0.06);
+  --grid-strong: rgba(15, 23, 42, 0.12);
+  --piano-black: rgba(15, 23, 42, 0.045);
+  --piano-white: rgba(255, 255, 255, 0);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.09), 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 18px 50px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+  --cat-pitch: #4f5fd6;
+  --cat-timing: #b78a12;
+  --cat-vowel: #178f86;
+  --cat-vibrato: #7c4fd1;
+  --cat-dynamics: #d4632f;
+  --cat-phonation: #c23d82;
+  --cat-articulation: #5c9423;
+  --cat-breath: #2f7fc2;
+  --cat-timbre: #a77319;
+  --cat-confidence: #6b7384;
+}
+
+:root[data-motion='reduced'] {
+  --dur-fast: 1ms;
+  --dur: 1ms;
+  --dur-slow: 1ms;
+}
+
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
