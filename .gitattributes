@@ -1,0 +1,8 @@
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.wav binary
+*.flac binary
+*.mp3 binary
+*.png binary
+*.woff2 binary
