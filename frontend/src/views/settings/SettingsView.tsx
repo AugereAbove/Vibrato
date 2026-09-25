@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { systemApi } from '../../api/endpoints'
+import { authApi, systemApi } from '../../api/endpoints'
 import type { PreferenceSchemaItem, PreferenceValue } from '../../api/types'
 import { measureLatency } from '../../audio/latency'
 import { listInputDevices, Recorder } from '../../audio/recorder'
@@ -11,6 +11,7 @@ import { Callout, ErrorState, SkeletonLines } from '../../components/ui/Feedback
 import { Icon } from '../../components/ui/Icon'
 import { formatBytes } from '../../lib/format'
 import { keys, useModels, usePreferenceSchema, useSystemInfo } from '../../state/data'
+import { useAuth } from '../../state/auth'
 import { attempt } from '../../state/errors'
 import { getPref, resetPrefs, setPref, usePrefsStore } from '../../state/prefs'
 import { invalidate, useResource } from '../../state/resource'
@@ -28,6 +29,7 @@ const SECTIONS = [
   'Performance',
   'Privacy',
   'Advanced',
+  'Access',
 ] as const
 type Section = (typeof SECTIONS)[number]
 
@@ -41,6 +43,7 @@ const ICONS: Record<Section, string> = {
   Performance: 'gauge',
   Privacy: 'shield',
   Advanced: 'sliders',
+  Access: 'users',
 }
 
 function Field({ item, value }: { item: PreferenceSchemaItem; value: PreferenceValue }) {
@@ -332,8 +335,67 @@ function PrivacyTool() {
   )
 }
 
+function InviteTool() {
+  const invites = useResource('auth-invites', async () => (await authApi.listInvites()).invites)
+  const [name, setName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const create = async () => {
+    setCreating(true)
+    const result = await attempt(() => authApi.createInvite(name.trim() || 'Tester'), 'Could not create invite')
+    setCreating(false)
+    if (result) {
+      setName('')
+      await invites.refresh()
+    }
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return (
+    <div className="setting-card card card-pad stack" style={{ gap: 8 }}>
+      <div className="row">
+        <Icon name="users" size={16} />
+        <strong className="grow">Invite testers</strong>
+        <Button size="xs" variant="ghost" icon="refresh" onClick={() => void invites.refresh()}>
+          Refresh
+        </Button>
+      </div>
+      <p className="small muted">
+        Each invite is a separate tester with their own projects, invisible to other testers. Send them the
+        link below.
+      </p>
+      <div className="row">
+        <TextField
+          placeholder="Tester name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void create()
+          }}
+        />
+        <Button icon="plus" onClick={() => void create()} loading={creating}>
+          Create invite
+        </Button>
+      </div>
+      {invites.loading ? <SkeletonLines lines={3} /> : null}
+      {invites.error ? <ErrorState error={invites.error} onRetry={() => void invites.refresh()} /> : null}
+      <ul className="plain-list">
+        {(invites.data ?? []).map((invite) => (
+          <li key={invite.code} className="row small" style={{ gap: 8 }}>
+            <span className="grow">{invite.display_name}</span>
+            {invite.used_at ? <Badge tone="good">claimed</Badge> : <Badge>unused</Badge>}
+            <code className="code-inline">{`${origin}${authApi.claimUrl(invite.code)}`}</code>
+          </li>
+        ))}
+        {(invites.data ?? []).length === 0 && !invites.loading ? (
+          <p className="muted">No testers invited yet.</p>
+        ) : null}
+      </ul>
+    </div>
+  )
+}
+
 export function SettingsView({ section }: { section?: string }) {
   const schema = usePreferenceSchema()
+  const isOwner = useAuth((s) => s.user?.is_owner ?? false)
   const values = usePrefsStore((s) => s.values)
   const models = useModels()
   const crepeMissing = models.data?.find((model) => model.id === 'crepe')?.available === false
@@ -361,7 +423,7 @@ export function SettingsView({ section }: { section?: string }) {
               aria-label="Search settings"
             />
           </div>
-          {SECTIONS.map((name) => (
+          {SECTIONS.filter((name) => name !== 'Access' || isOwner).map((name) => (
             <button
               key={name}
               type="button"
@@ -382,7 +444,7 @@ export function SettingsView({ section }: { section?: string }) {
               <h1>{query ? 'Search results' : active}</h1>
               <p className="muted">Changes are saved immediately.</p>
             </div>
-            {!query ? (
+            {!query && active !== 'Access' ? (
               <Button
                 variant="ghost"
                 icon="refresh"
@@ -409,6 +471,7 @@ export function SettingsView({ section }: { section?: string }) {
           {!query && active === 'Models' ? <ModelsTool /> : null}
           {!query && active === 'Storage' ? <StorageTool /> : null}
           {!query && active === 'Privacy' ? <PrivacyTool /> : null}
+          {!query && active === 'Access' && isOwner ? <InviteTool /> : null}
           <div className="setting-list">
             {filtered.map((item) => (
               <div key={item.key} className="setting-row">
@@ -422,7 +485,7 @@ export function SettingsView({ section }: { section?: string }) {
                 ) : null}
               </div>
             ))}
-            {filtered.length === 0 && !schema.loading ? (
+            {filtered.length === 0 && !schema.loading && active !== 'Access' ? (
               <p className="muted">No settings match “{query}”.</p>
             ) : null}
           </div>

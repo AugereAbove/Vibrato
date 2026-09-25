@@ -327,7 +327,7 @@ def backup_project(project_id: str) -> Path:
     return target
 
 
-def restore_project(archive_path: Path) -> dict[str, Any]:
+def restore_project(archive_path: Path, owner_id: str) -> dict[str, Any]:
     from .importer import ingest_file
 
     with zipfile.ZipFile(archive_path) as archive:
@@ -394,6 +394,7 @@ def restore_project(archive_path: Path) -> dict[str, Any]:
                     values["id"] = new_id(table[:3])
                 if table == "projects":
                     values["name"] = f"{values['name']} (restored)"
+                    values["owner_id"] = owner_id
                 columns = list(values.keys())
                 try:
                     conn.execute(

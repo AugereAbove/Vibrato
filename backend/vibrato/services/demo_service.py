@@ -29,7 +29,7 @@ def _demo_file(name: str, performance: Any) -> Any:
     return path
 
 
-def create_demo_project(context: TaskContext | None = None) -> dict[str, Any]:
+def create_demo_project(context: TaskContext | None, owner_id: str) -> dict[str, Any]:
     if context:
         context.progress(0.02, "Synthesising demo reference")
     with get_db().tx() as conn:
@@ -41,6 +41,7 @@ def create_demo_project(context: TaskContext | None = None) -> dict[str, Any]:
             singer_label="Synthetic reference voice",
             notes="All audio in this project is synthesised by Vibrato's built-in source-filter voice model. The takes contain deliberate, known differences from the reference (vibrato, a scoop, a flat note, vowel colour, breathiness, timing, a missing breath) so every analysis view has something real to show.",
             is_demo=True,
+            owner_id=owner_id,
         )
     reference_path = _demo_file("demo-reference", reference_performance())
     reference = import_recording(

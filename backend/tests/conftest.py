@@ -67,7 +67,20 @@ def isolated_settings(tmp_path: Path) -> Settings:
 @pytest.fixture(scope="module")
 def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
     from vibrato.api.app import create_app
+    from vibrato.db import get_db
+    from vibrato.store import auth as auth_store
 
     settings = Settings(data_dir=tmp_path_factory.mktemp("api") / "data", workers=2, deterministic=True)
     with TestClient(create_app(settings)) as test_client:
+        # The app's own startup bootstraps a single owner user with an unused
+        # invite code (see auth_service.bootstrap_owner). Claim it here so
+        # every test using this fixture is already signed in as the owner,
+        # matching the site's real first-run flow instead of a test-only
+        # backdoor.
+        with get_db().read() as conn:
+            owner = auth_store.find_owner(conn)
+            assert owner is not None
+            invite = auth_store.find_unused_invite_for_user(conn, owner["id"])
+            assert invite is not None
+        test_client.get(f"/api/auth/claim/{invite['code']}")
         yield test_client

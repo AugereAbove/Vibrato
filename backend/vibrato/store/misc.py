@@ -148,29 +148,34 @@ def set_pronunciation(
     )
 
 
-def get_preferences(conn: sqlite3.Connection) -> dict[str, Any]:
+def get_preferences(conn: sqlite3.Connection, owner_id: str) -> dict[str, Any]:
     import json
 
     return {
         r["key"]: json.loads(r["value_json"])
-        for r in conn.execute("SELECT key, value_json FROM user_preferences").fetchall()
+        for r in conn.execute(
+            "SELECT key, value_json FROM user_preferences WHERE owner_id = ?", (owner_id,)
+        ).fetchall()
     }
 
 
-def set_preferences(conn: sqlite3.Connection, values: dict[str, Any]) -> None:
+def set_preferences(conn: sqlite3.Connection, owner_id: str, values: dict[str, Any]) -> None:
     now = utcnow()
     for key, value in values.items():
         if value is None:
-            conn.execute("DELETE FROM user_preferences WHERE key = ?", (key,))
+            conn.execute(
+                "DELETE FROM user_preferences WHERE owner_id = ? AND key = ?", (owner_id, key)
+            )
         else:
             conn.execute(
-                "INSERT INTO user_preferences (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-                (key, dumps(value), now),
+                "INSERT INTO user_preferences (owner_id, key, value_json, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(owner_id, key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+                (owner_id, key, dumps(value), now),
             )
 
 
-def clear_preferences(conn: sqlite3.Connection) -> None:
-    conn.execute("DELETE FROM user_preferences")
+def clear_preferences(conn: sqlite3.Connection, owner_id: str) -> None:
+    conn.execute("DELETE FROM user_preferences WHERE owner_id = ?", (owner_id,))
 
 
 def coaching_overrides(

@@ -40,9 +40,13 @@ def list_projects(
     sort: str = "recent",
     include_archived: bool = False,
     favorites_only: bool = False,
+    owner_id: str | None = None,
 ) -> list[dict[str, Any]]:
     clauses = []
     params: list[Any] = []
+    if owner_id is not None:
+        clauses.append("p.owner_id = ?")
+        params.append(owner_id)
     if not include_archived:
         clauses.append("p.archived = 0")
     if favorites_only:
@@ -70,11 +74,12 @@ def create_project(
     singer_label: str = "",
     notes: str = "",
     is_demo: bool = False,
+    owner_id: str | None = None,
 ) -> dict[str, Any]:
     project_id = new_id("prj")
     now = utcnow()
     conn.execute(
-        "INSERT INTO projects (id, name, song_title, song_artist, singer_label, notes, is_demo, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (id, name, song_title, song_artist, singer_label, notes, is_demo, owner_id, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             project_id,
             name.strip() or "Untitled project",
@@ -83,6 +88,7 @@ def create_project(
             singer_label,
             notes,
             int(is_demo),
+            owner_id,
             now,
             now,
             now,
@@ -131,6 +137,7 @@ def duplicate_project(conn: sqlite3.Connection, project_id: str) -> dict[str, An
         source["song_artist"],
         source["singer_label"],
         source["notes"],
+        owner_id=source.get("owner_id"),
     )
     mapping: dict[str, str] = {}
     recordings = conn.execute(

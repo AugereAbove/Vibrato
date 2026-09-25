@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
@@ -12,11 +12,17 @@ from ...alignment.aligner import Alignment
 from ...db import get_db
 from ...services import comparison_service, counterfactual_service, export_service
 from ...storage import render_file
-from ...store import comparisons as comparison_store
 from ...store import misc as misc_store
-from ...store import recordings as recording_store
 from ...tasks.manager import get_tasks
 from ...util import read_json
+from ..deps import (
+    User,
+    ensure_owns_anchor,
+    ensure_owns_comparison,
+    ensure_owns_recording,
+    ensure_owns_render,
+    get_current_user,
+)
 from ..errors import NotFound
 from .common import task_response
 
@@ -61,11 +67,9 @@ class RenderRequest(BaseModel):
 
 
 @router.post("/comparisons")
-def create_comparison(body: CompareRequest) -> dict[str, Any]:
+def create_comparison(body: CompareRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
-        take = recording_store.get_recording(conn, body.take_id)
-    if take is None:
-        raise NotFound("This take does not exist.")
+        take = ensure_owns_recording(conn, body.take_id, user)
     state = get_tasks().submit(
         "compare",
         lambda ctx: comparison_service.run_comparison(body.take_id, body.reference_id, ctx, body.force_align),
@@ -78,8 +82,9 @@ def create_comparison(body: CompareRequest) -> dict[str, Any]:
 
 
 @router.get("/takes/{take_id}/comparison")
-def comparison_for_take(take_id: str) -> dict[str, Any]:
+def comparison_for_take(take_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_recording(conn, take_id, user)
         row = conn.execute(
             "SELECT id FROM comparisons WHERE take_recording_id = ? ORDER BY created_at DESC LIMIT 1",
             (take_id,),
@@ -90,27 +95,37 @@ def comparison_for_take(take_id: str) -> dict[str, Any]:
 
 
 @router.get("/comparisons/{comparison_id}")
-def get_comparison(comparison_id: str) -> dict[str, Any]:
+def get_comparison(comparison_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     return comparison_service.comparison_payload(comparison_id)
 
 
 @router.post("/comparisons/{comparison_id}/why")
-def why(comparison_id: str, body: RegionRequest) -> dict[str, Any]:
+def why(comparison_id: str, body: RegionRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     return comparison_service.explain_region(comparison_id, body.start_s, body.end_s)
 
 
 @router.post("/comparisons/{comparison_id}/rescore")
-def rescore(comparison_id: str, body: RescoreRequest) -> dict[str, Any]:
+def rescore(
+    comparison_id: str, body: RescoreRequest, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     return comparison_service.rescore(comparison_id, body.enabled, body.weights)
 
 
 @router.post("/comparisons/{comparison_id}/realign")
-def realign(comparison_id: str, body: RegionRequest) -> dict[str, Any]:
+def realign(comparison_id: str, body: RegionRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    with get_db().read() as conn:
+        comparison = ensure_owns_comparison(conn, comparison_id, user)
     state = get_tasks().submit(
         "realign",
         lambda ctx: comparison_service.realign(comparison_id, body.start_s, body.end_s),
         {"comparison_id": comparison_id},
-        None,
+        comparison.get("project_id"),
         f"realign:{comparison_id}",
         "Realigning the selected region",
     )
@@ -118,11 +133,9 @@ def realign(comparison_id: str, body: RegionRequest) -> dict[str, Any]:
 
 
 @router.get("/comparisons/{comparison_id}/alignment")
-def alignment(comparison_id: str) -> dict[str, Any]:
+def alignment(comparison_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
-        row = comparison_store.get_comparison(conn, comparison_id)
-        if row is None:
-            raise NotFound("This comparison does not exist.")
+        row = ensure_owns_comparison(conn, comparison_id, user)
         alignment_row = misc_store.get_alignment(
             conn, row["reference_recording_id"], row["take_recording_id"]
         )
@@ -147,8 +160,10 @@ def alignment(comparison_id: str) -> dict[str, Any]:
 
 
 @router.post("/anchors")
-def add_anchor(body: AnchorCreate) -> dict[str, Any]:
+def add_anchor(body: AnchorCreate, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, body.reference_id, user)
+        ensure_owns_recording(conn, body.take_id, user)
         return {
             "anchor": misc_store.add_anchor(
                 conn,
@@ -164,8 +179,11 @@ def add_anchor(body: AnchorCreate) -> dict[str, Any]:
 
 
 @router.patch("/anchors/{anchor_id}")
-def update_anchor(anchor_id: str, body: AnchorUpdate) -> dict[str, Any]:
+def update_anchor(
+    anchor_id: str, body: AnchorUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_anchor(conn, anchor_id, user)
         anchor = misc_store.update_anchor(conn, anchor_id, **body.model_dump(exclude_unset=True))
     if anchor is None:
         raise NotFound("This anchor does not exist.")
@@ -173,13 +191,16 @@ def update_anchor(anchor_id: str, body: AnchorUpdate) -> dict[str, Any]:
 
 
 @router.delete("/anchors/{anchor_id}")
-def delete_anchor(anchor_id: str) -> dict[str, Any]:
+def delete_anchor(anchor_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_anchor(conn, anchor_id, user)
         return {"deleted": misc_store.delete_anchor(conn, anchor_id)}
 
 
 @router.get("/comparisons/{comparison_id}/export.csv")
-def export_csv(comparison_id: str) -> PlainTextResponse:
+def export_csv(comparison_id: str, user: User = Depends(get_current_user)) -> PlainTextResponse:
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     return PlainTextResponse(
         export_service.comparison_csv(comparison_id),
         media_type="text/csv",
@@ -188,9 +209,11 @@ def export_csv(comparison_id: str) -> PlainTextResponse:
 
 
 @router.get("/comparisons/{comparison_id}/export.json")
-def export_json(comparison_id: str) -> Response:
+def export_json(comparison_id: str, user: User = Depends(get_current_user)) -> Response:
     import json
 
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     return Response(
         json.dumps(export_service.comparison_json(comparison_id), indent=2, default=str),
         media_type="application/json",
@@ -199,7 +222,11 @@ def export_json(comparison_id: str) -> Response:
 
 
 @router.get("/comparisons/{comparison_id}/ab.wav")
-def ab_snippet(comparison_id: str, start: float, end: float) -> Response:
+def ab_snippet(
+    comparison_id: str, start: float, end: float, user: User = Depends(get_current_user)
+) -> Response:
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     data, filename = export_service.ab_snippet(comparison_id, start, end)
     return Response(
         data, media_type="audio/wav", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
@@ -207,16 +234,14 @@ def ab_snippet(comparison_id: str, start: float, end: float) -> Response:
 
 
 @router.get("/counterfactual/transforms")
-def transforms() -> dict[str, Any]:
+def transforms(user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"transforms": counterfactual_service.available_transforms()}
 
 
 @router.post("/takes/{take_id}/counterfactuals")
-def render(take_id: str, body: RenderRequest) -> dict[str, Any]:
+def render(take_id: str, body: RenderRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
-        take = recording_store.get_recording(conn, take_id)
-    if take is None:
-        raise NotFound("This take does not exist.")
+        take = ensure_owns_recording(conn, take_id, user)
     state = get_tasks().submit(
         "counterfactual",
         lambda ctx: counterfactual_service.render(take_id, body.transform, ctx),
@@ -229,14 +254,18 @@ def render(take_id: str, body: RenderRequest) -> dict[str, Any]:
 
 
 @router.get("/takes/{take_id}/counterfactuals")
-def list_renders(take_id: str) -> dict[str, Any]:
+def list_renders(take_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_recording(conn, take_id, user)
         return {"renders": misc_store.list_renders(conn, take_id)}
 
 
 @router.get("/renders/{render_id}/audio")
-def render_audio(render_id: str, download: bool = False) -> FileResponse:
+def render_audio(
+    render_id: str, download: bool = False, user: User = Depends(get_current_user)
+) -> FileResponse:
     with get_db().read() as conn:
+        ensure_owns_render(conn, render_id, user)
         row = misc_store.get_render(conn, render_id)
     path = render_file(render_id)
     if row is None or not path.exists():
@@ -251,8 +280,10 @@ def render_audio(render_id: str, download: bool = False) -> FileResponse:
 
 
 @router.get("/comparisons/{comparison_id}/metrics")
-def metrics(comparison_id: str) -> dict[str, Any]:
+def metrics(comparison_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     from ...storage import comparison_file
 
+    with get_db().read() as conn:
+        ensure_owns_comparison(conn, comparison_id, user)
     payload = read_json(comparison_file(comparison_id))
     return {"metrics": payload["metrics"]}

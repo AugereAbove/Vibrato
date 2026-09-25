@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import parselmouth
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse, Response
 from parselmouth.praat import call
 from pydantic import BaseModel
@@ -15,9 +15,9 @@ from ...services.analysis_service import ensure_analysis, load_audio
 from ...services.importer import import_recording
 from ...storage import peaks_path, playback_path, stretched_path
 from ...store import misc as misc_store
-from ...store import projects as project_store
 from ...store import recordings as recording_store
 from ...tasks.manager import get_tasks
+from ..deps import User, ensure_owns_bookmark, ensure_owns_project, ensure_owns_recording, get_current_user
 from ..errors import NotFound
 from .common import save_upload
 
@@ -71,12 +71,9 @@ class BookmarkUpdate(BaseModel):
     color: str | None = None
 
 
-def _recording(recording_id: str) -> dict[str, Any]:
+def _recording(recording_id: str, user: User) -> dict[str, Any]:
     with get_db().read() as conn:
-        recording = recording_store.get_recording(conn, recording_id)
-    if recording is None:
-        raise NotFound("This recording does not exist.")
-    return recording
+        return ensure_owns_recording(conn, recording_id, user)
 
 
 def _with_role_issues(recording: dict[str, Any]) -> dict[str, Any]:
@@ -121,10 +118,10 @@ async def upload_recording(
     lyrics: str = Form(""),
     source: str = Form("import"),
     auto_analyze: bool = Form(True),
+    user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     with get_db().read() as conn:
-        if project_store.get_project(conn, project_id) is None:
-            raise NotFound("This project does not exist.")
+        ensure_owns_project(conn, project_id, user)
     path, original = await save_upload(file)
     try:
         region = (
@@ -172,8 +169,11 @@ async def upload_recording(
 
 
 @router.get("/projects/{project_id}/recordings")
-def list_recordings(project_id: str, kind: str | None = None) -> dict[str, Any]:
+def list_recordings(
+    project_id: str, kind: str | None = None, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_project(conn, project_id, user)
         return {
             "recordings": [
                 _with_role_issues(r) for r in recording_store.list_recordings(conn, project_id, kind)
@@ -182,21 +182,22 @@ def list_recordings(project_id: str, kind: str | None = None) -> dict[str, Any]:
 
 
 @router.get("/recordings/{recording_id}")
-def get_recording(recording_id: str) -> dict[str, Any]:
-    return {"recording": _with_role_issues(_recording(recording_id))}
+def get_recording(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    return {"recording": _with_role_issues(_recording(recording_id, user))}
 
 
 @router.patch("/recordings/{recording_id}")
-def update_recording(recording_id: str, body: RecordingUpdate) -> dict[str, Any]:
+def update_recording(
+    recording_id: str, body: RecordingUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     fields = body.model_dump(exclude_unset=True)
     with get_db().tx() as conn:
-        if fields.get("is_primary"):
-            current = recording_store.get_recording(conn, recording_id)
-            if current and current.get("project_id"):
-                conn.execute(
-                    "UPDATE reference_recordings SET is_primary = 0 WHERE recording_id IN (SELECT id FROM recordings WHERE project_id = ?)",
-                    (current["project_id"],),
-                )
+        current = ensure_owns_recording(conn, recording_id, user)
+        if fields.get("is_primary") and current.get("project_id"):
+            conn.execute(
+                "UPDATE reference_recordings SET is_primary = 0 WHERE recording_id IN (SELECT id FROM recordings WHERE project_id = ?)",
+                (current["project_id"],),
+            )
         recording = recording_store.update_recording(conn, recording_id, **fields)
     if recording is None:
         raise NotFound("This recording does not exist.")
@@ -204,16 +205,20 @@ def update_recording(recording_id: str, body: RecordingUpdate) -> dict[str, Any]
 
 
 @router.delete("/recordings/{recording_id}")
-def delete_recording(recording_id: str) -> dict[str, Any]:
+def delete_recording(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         if not recording_store.delete_recording(conn, recording_id):
             raise NotFound("This recording does not exist.")
     return {"deleted": True}
 
 
 @router.put("/recordings/{recording_id}/lyrics")
-def set_lyrics(recording_id: str, body: LyricsUpdate) -> dict[str, Any]:
+def set_lyrics(
+    recording_id: str, body: LyricsUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         recording = recording_store.update_recording(conn, recording_id, lyrics=body.lyrics)
     if recording is None:
         raise NotFound("This recording does not exist.")
@@ -221,8 +226,9 @@ def set_lyrics(recording_id: str, body: LyricsUpdate) -> dict[str, Any]:
 
 
 @router.get("/recordings/{recording_id}/pronunciations")
-def get_pronunciations(recording_id: str) -> dict[str, Any]:
+def get_pronunciations(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         return {
             "overrides": {
                 str(k): v for k, v in misc_store.pronunciation_overrides(conn, recording_id).items()
@@ -231,8 +237,11 @@ def get_pronunciations(recording_id: str) -> dict[str, Any]:
 
 
 @router.put("/recordings/{recording_id}/pronunciations")
-def set_pronunciation(recording_id: str, body: PronunciationUpdate) -> dict[str, Any]:
+def set_pronunciation(
+    recording_id: str, body: PronunciationUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         misc_store.set_pronunciation(conn, recording_id, body.word_index, body.word, body.pronunciation)
         return {
             "overrides": {
@@ -242,14 +251,18 @@ def set_pronunciation(recording_id: str, body: PronunciationUpdate) -> dict[str,
 
 
 @router.get("/recordings/{recording_id}/sections")
-def get_sections(recording_id: str) -> dict[str, Any]:
+def get_sections(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         return {"sections": misc_store.list_sections(conn, recording_id)}
 
 
 @router.put("/recordings/{recording_id}/sections")
-def put_sections(recording_id: str, body: SectionsUpdate) -> dict[str, Any]:
+def put_sections(
+    recording_id: str, body: SectionsUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         return {
             "sections": misc_store.replace_sections(
                 conn, recording_id, [s.model_dump() for s in body.sections]
@@ -258,14 +271,18 @@ def put_sections(recording_id: str, body: SectionsUpdate) -> dict[str, Any]:
 
 
 @router.get("/recordings/{recording_id}/bookmarks")
-def bookmarks(recording_id: str) -> dict[str, Any]:
+def bookmarks(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         return {"bookmarks": misc_store.list_bookmarks(conn, recording_id)}
 
 
 @router.post("/recordings/{recording_id}/bookmarks")
-def add_bookmark(recording_id: str, body: BookmarkCreate) -> dict[str, Any]:
+def add_bookmark(
+    recording_id: str, body: BookmarkCreate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_recording(conn, recording_id, user)
         return {
             "bookmark": misc_store.add_bookmark(
                 conn, recording_id, body.start_s, body.end_s, body.label, body.color
@@ -274,8 +291,11 @@ def add_bookmark(recording_id: str, body: BookmarkCreate) -> dict[str, Any]:
 
 
 @router.patch("/bookmarks/{bookmark_id}")
-def update_bookmark(bookmark_id: str, body: BookmarkUpdate) -> dict[str, Any]:
+def update_bookmark(
+    bookmark_id: str, body: BookmarkUpdate, user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_bookmark(conn, bookmark_id, user)
         bookmark = misc_store.update_bookmark(conn, bookmark_id, **body.model_dump(exclude_unset=True))
     if bookmark is None:
         raise NotFound("This bookmark does not exist.")
@@ -283,14 +303,15 @@ def update_bookmark(bookmark_id: str, body: BookmarkUpdate) -> dict[str, Any]:
 
 
 @router.delete("/bookmarks/{bookmark_id}")
-def delete_bookmark(bookmark_id: str) -> dict[str, Any]:
+def delete_bookmark(bookmark_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_owns_bookmark(conn, bookmark_id, user)
         return {"deleted": misc_store.delete_bookmark(conn, bookmark_id)}
 
 
 @router.get("/recordings/{recording_id}/audio")
-def audio(recording_id: str) -> FileResponse:
-    recording = _recording(recording_id)
+def audio(recording_id: str, user: User = Depends(get_current_user)) -> FileResponse:
+    recording = _recording(recording_id, user)
     path = playback_path(recording["content_hash"])
     if not path.exists():
         raise NotFound("The playback audio is missing.")
@@ -298,8 +319,8 @@ def audio(recording_id: str) -> FileResponse:
 
 
 @router.get("/recordings/{recording_id}/original")
-def original(recording_id: str) -> FileResponse:
-    recording = _recording(recording_id)
+def original(recording_id: str, user: User = Depends(get_current_user)) -> FileResponse:
+    recording = _recording(recording_id, user)
     with get_db().read() as conn:
         asset = recording_store.get_asset(conn, recording["content_hash"])
     if asset is None or not Path(asset["original_path"]).exists():
@@ -308,8 +329,8 @@ def original(recording_id: str) -> FileResponse:
 
 
 @router.get("/recordings/{recording_id}/peaks")
-def peaks(recording_id: str) -> Response:
-    recording = _recording(recording_id)
+def peaks(recording_id: str, user: User = Depends(get_current_user)) -> Response:
+    recording = _recording(recording_id, user)
     path = peaks_path(recording["content_hash"])
     if not path.exists():
         raise NotFound("Waveform peaks are missing.")
@@ -321,8 +342,10 @@ def peaks(recording_id: str) -> Response:
 
 
 @router.get("/recordings/{recording_id}/stretched")
-def stretched(recording_id: str, speed: float = 0.75) -> FileResponse:
-    recording = _recording(recording_id)
+def stretched(
+    recording_id: str, speed: float = 0.75, user: User = Depends(get_current_user)
+) -> FileResponse:
+    recording = _recording(recording_id, user)
     speed = float(min(1.0, max(MIN_SPEED, speed)))
     factor = 1.0 / speed
     path = stretched_path(recording["content_hash"], factor)
@@ -341,7 +364,8 @@ def stretched(recording_id: str, speed: float = 0.75) -> FileResponse:
 
 
 @router.get("/recordings/{recording_id}/segment.wav")
-def segment(recording_id: str, start: float, end: float) -> Response:
+def segment(recording_id: str, start: float, end: float, user: User = Depends(get_current_user)) -> Response:
+    _recording(recording_id, user)
     data, filename = export_service.audio_segment(recording_id, start, end)
     return Response(
         data, media_type="audio/wav", headers={"Content-Disposition": f'attachment; filename="{filename}"'}

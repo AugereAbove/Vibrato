@@ -18,6 +18,7 @@ from ..logging_setup import get_logger
 from ..storage import analysis_path, canonical_path, features_path
 from ..store import analyses as analysis_store
 from ..store import recordings as recording_store
+from ..store.auth import get_owner_id
 from ..store.calibration import active_profile
 from ..store.misc import get_preferences, list_sections, pronunciation_overrides
 from ..tasks.manager import ProgressReporter
@@ -59,7 +60,7 @@ def _lock_for(recording_id: str) -> threading.Lock:
 
 def analysis_options() -> dict[str, Any]:
     with get_db().read() as conn:
-        prefs = get_preferences(conn)
+        prefs = get_preferences(conn, get_owner_id(conn))
     return {
         "use_pyin": bool(prefs.get("analysis.use_pyin", False)),
         "use_crepe": bool(prefs.get("analysis.use_crepe", False)),
@@ -97,7 +98,10 @@ def recording_inputs(conn: Any, recording: dict[str, Any]) -> dict[str, Any]:
             if reference is not None:
                 lyrics = reference.get("lyrics") or ""
                 overrides = pronunciation_overrides(conn, reference_id)
-        profile = active_profile(conn)
+        owner_row = conn.execute(
+            "SELECT owner_id FROM projects WHERE id = ?", (recording.get("project_id"),)
+        ).fetchone()
+        profile = active_profile(conn, owner_row["owner_id"]) if owner_row else None
         if profile and profile.get("results"):
             baseline = profile["results"].get("baseline")
             baseline_id = profile["id"]

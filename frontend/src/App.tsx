@@ -11,6 +11,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { Icon } from './components/ui/Icon'
 import { ContextMenuHost } from './components/ui/Menu'
 import { Toaster } from './components/ui/Toaster'
+import { checkAuth, useAuth } from './state/auth'
 import { redo, undo } from './state/history'
 import { loadPrefs, setPref, useReducedMotion, useResolvedTheme, usePref } from './state/prefs'
 import { navigate, useRoute } from './state/router'
@@ -21,6 +22,7 @@ import { DiagnosticsView } from './views/diagnostics/DiagnosticsView'
 import { HelpView } from './views/help/HelpView'
 import { HomeView } from './views/home/HomeView'
 import { startDemo } from './views/home/projectActions'
+import { LoginView } from './views/login/LoginView'
 import { ProfilesView } from './views/profiles/ProfilesView'
 import { ProjectView } from './views/project/ProjectView'
 import { SettingsView } from './views/settings/SettingsView'
@@ -86,9 +88,15 @@ export function App() {
   const theme = useResolvedTheme()
   const reduced = useReducedMotion()
   const backend = useBackendStatus()
+  const authStatus = useAuth((s) => s.status)
   const lastProjectId = useUi((s) => s.lastProjectId)
   const themePref = usePref<string>('display.theme', 'system')
   useGlobalKeys()
+
+  useEffect(() => {
+    if (backend !== 'online') return
+    void checkAuth()
+  }, [backend])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -100,10 +108,10 @@ export function App() {
   }, [reduced])
 
   useEffect(() => {
-    if (backend !== 'online') return
+    if (backend !== 'online' || authStatus !== 'authed') return
     void loadPrefs()
     void resumeActiveTasks()
-  }, [backend])
+  }, [backend, authStatus])
 
   const globalCommands: Command[] = useMemo(
     () => [
@@ -216,36 +224,42 @@ export function App() {
   useRegisterCommands('global', globalCommands)
 
   let view: React.ReactNode
-  switch (route.name) {
-    case 'home':
-      view = <HomeView />
-      break
-    case 'project':
-      view = (
-        <ProjectView
-          key={route.projectId}
-          projectId={route.projectId}
-          tab={route.tab}
-          take={route.take}
-          reference={route.ref}
-        />
-      )
-      break
-    case 'settings':
-      view = <SettingsView section={route.section} />
-      break
-    case 'calibration':
-      view = <CalibrationView />
-      break
-    case 'profiles':
-      view = <ProfilesView profileId={route.profileId} />
-      break
-    case 'diagnostics':
-      view = <DiagnosticsView />
-      break
-    case 'help':
-      view = <HelpView topic={route.topic} />
-      break
+  if (authStatus === 'checking') {
+    view = null
+  } else if (authStatus === 'anon') {
+    view = <LoginView />
+  } else {
+    switch (route.name) {
+      case 'home':
+        view = <HomeView />
+        break
+      case 'project':
+        view = (
+          <ProjectView
+            key={route.projectId}
+            projectId={route.projectId}
+            tab={route.tab}
+            take={route.take}
+            reference={route.ref}
+          />
+        )
+        break
+      case 'settings':
+        view = <SettingsView section={route.section} />
+        break
+      case 'calibration':
+        view = <CalibrationView />
+        break
+      case 'profiles':
+        view = <ProfilesView profileId={route.profileId} />
+        break
+      case 'diagnostics':
+        view = <DiagnosticsView />
+        break
+      case 'help':
+        view = <HelpView topic={route.topic} />
+        break
+    }
   }
 
   return (

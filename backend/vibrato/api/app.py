@@ -15,9 +15,10 @@ from .. import __version__
 from ..config import Settings, configure, get_settings
 from ..db import init_db
 from ..logging_setup import get_logger, setup_logging
+from ..services import auth_service
 from ..tasks.manager import get_tasks, init_tasks
 from .errors import install_error_handlers
-from .routes import analysis, comparisons, extras, projects, recordings, system
+from .routes import analysis, auth, comparisons, extras, projects, recordings, system
 
 log = get_logger("app")
 
@@ -33,6 +34,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = init_db(active.db_path, active.backups_dir)
         if database.recovery_status.get("recovered"):
             log.warning(str(database.recovery_status.get("message")))
+        owner_code = auth_service.bootstrap_owner()
+        if owner_code:
+            log.warning(
+                "First run: sign in as the owner by visiting /api/auth/claim/%s "
+                "(this is logged only once - save the link)",
+                owner_code,
+            )
         init_tasks(active.workers)
         from ..analysis.base import all_analyzers
 
@@ -60,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     app.add_middleware(GZipMiddleware, minimum_size=2048)
     install_error_handlers(app)
-    for module in (projects, recordings, analysis, comparisons, extras, system):
+    for module in (auth, projects, recordings, analysis, comparisons, extras, system):
         app.include_router(module.router, prefix="/api")
     dist = active.frontend_dist
     if dist is not None and (dist / "index.html").exists():

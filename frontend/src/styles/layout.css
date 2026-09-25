@@ -981,3 +981,44 @@
     display: none;
   }
 }
+
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  max-width: 360px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  animation: rise-in var(--dur) var(--ease-out);
+}
+
+.login-card h1 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.login-card p {
+  color: var(--text-2);
+  margin: 0;
+}
+
+.login-card .field {
+  width: 100%;
+}
+
+.login-card .btn {
+  align-self: stretch;
+  justify-content: center;
+}

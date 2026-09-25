@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
 from ... import __version__
@@ -17,6 +17,7 @@ from ...services.analysis_service import clear_memory_cache, ensure_analysis
 from ...storage import clear_derived_cache
 from ...store import analyses as analysis_store
 from ...tasks.manager import TaskContext, get_tasks
+from ..deps import User, require_owner
 from .common import task_response
 
 router = APIRouter(tags=["system"])
@@ -35,32 +36,32 @@ def health() -> dict[str, Any]:
 
 
 @router.get("/system")
-def system() -> dict[str, Any]:
+def system(user: User = Depends(require_owner)) -> dict[str, Any]:
     return system_service.system_info()
 
 
 @router.get("/system/models")
-def models() -> dict[str, Any]:
+def models(user: User = Depends(require_owner)) -> dict[str, Any]:
     return {"models": system_service.model_status()}
 
 
 @router.get("/system/analyzers")
-def analyzers() -> dict[str, Any]:
+def analyzers(user: User = Depends(require_owner)) -> dict[str, Any]:
     return {"analyzers": [a.explain() for a in all_analyzers()], "pipeline_version": pipeline_version()}
 
 
 @router.get("/system/methods")
-def methods() -> dict[str, Any]:
+def methods(user: User = Depends(require_owner)) -> dict[str, Any]:
     return system_service.methods()
 
 
 @router.get("/system/cache")
-def cache() -> dict[str, Any]:
+def cache(user: User = Depends(require_owner)) -> dict[str, Any]:
     return system_service.cache_usage()
 
 
 @router.post("/system/cache/clear")
-def clear_cache() -> dict[str, Any]:
+def clear_cache(user: User = Depends(require_owner)) -> dict[str, Any]:
     freed = clear_derived_cache()
     clear_memory_cache()
     with get_db().tx() as conn:
@@ -74,13 +75,13 @@ def clear_cache() -> dict[str, Any]:
 
 
 @router.get("/system/timing")
-def timing() -> dict[str, Any]:
+def timing(user: User = Depends(require_owner)) -> dict[str, Any]:
     with get_db().read() as conn:
         return {"analyzers": analysis_store.timing_statistics(conn)}
 
 
 @router.get("/system/outdated")
-def outdated() -> dict[str, Any]:
+def outdated(user: User = Depends(require_owner)) -> dict[str, Any]:
     with get_db().read() as conn:
         return {
             "recordings": analysis_store.outdated_recordings(conn, pipeline_version()),
@@ -89,7 +90,7 @@ def outdated() -> dict[str, Any]:
 
 
 @router.post("/system/reanalyze")
-def reanalyze_all(only_outdated: bool = True) -> dict[str, Any]:
+def reanalyze_all(only_outdated: bool = True, user: User = Depends(require_owner)) -> dict[str, Any]:
     with get_db().read() as conn:
         if only_outdated:
             targets = analysis_store.outdated_recordings(conn, pipeline_version())
@@ -121,7 +122,7 @@ def reanalyze_all(only_outdated: bool = True) -> dict[str, Any]:
 
 
 @router.get("/system/logs")
-def logs(lines: int = 200) -> dict[str, Any]:
+def logs(lines: int = 200, user: User = Depends(require_owner)) -> dict[str, Any]:
     path = get_settings().logs_dir / "vibrato.log"
     if not path.exists():
         return {"lines": []}
@@ -131,6 +132,6 @@ def logs(lines: int = 200) -> dict[str, Any]:
 
 
 @router.get("/system/debug-bundle")
-def debug_bundle() -> FileResponse:
+def debug_bundle(user: User = Depends(require_owner)) -> FileResponse:
     path = export_service.debug_bundle()
     return FileResponse(path, filename=path.name, media_type="application/zip")

@@ -16,6 +16,7 @@ from ..store import comparisons as comparison_store
 from ..store import misc as misc_store
 from ..store import projects as project_store
 from ..store import recordings as recording_store
+from ..store.auth import get_owner_id
 from ..store.misc import get_preferences
 from ..tasks.manager import TaskContext
 from ..util import read_json, stable_hash, write_json_atomic
@@ -35,7 +36,7 @@ def _anchors(reference_id: str, take_id: str) -> list[Anchor]:
 
 def scoring_preferences() -> tuple[dict[str, bool], dict[str, float]]:
     with get_db().read() as conn:
-        prefs = get_preferences(conn)
+        prefs = get_preferences(conn, get_owner_id(conn))
     enabled = {k.split(".", 2)[2]: bool(v) for k, v in prefs.items() if k.startswith("scoring.enabled.")}
     weights = {k.split(".", 2)[2]: float(v) for k, v in prefs.items() if k.startswith("scoring.weight.")}
     return enabled, weights

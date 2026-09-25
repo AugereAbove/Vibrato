@@ -290,3 +290,26 @@ export const systemApi = {
   logs: (lines = 300) => http.get<{ lines: string[] }>(`/system/logs${query({ lines })}`),
   debugBundleUrl: () => http.url('/system/debug-bundle'),
 }
+
+export interface AuthUser {
+  id: string
+  display_name: string
+  is_owner: boolean
+}
+
+export interface Invite {
+  code: string
+  user_id: string
+  display_name: string
+  created_at: string
+  used_at: string | null
+}
+
+export const authApi = {
+  me: (signal?: AbortSignal) => http.get<{ user: AuthUser }>('/auth/me', signal),
+  logout: () => http.post<{ ok: boolean }>('/auth/logout'),
+  claimUrl: (code: string) => http.url(`/auth/claim/${code}`),
+  listInvites: () => http.get<{ invites: Invite[] }>('/auth/invites'),
+  createInvite: (displayName: string) =>
+    http.post<{ invite: Invite }>('/auth/invites', { display_name: displayName }),
+}

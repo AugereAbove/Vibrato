@@ -343,28 +343,28 @@ SCHEMA: list[dict[str, Any]] = [
 ]
 
 
-def all_preferences() -> dict[str, Any]:
+def all_preferences(owner_id: str) -> dict[str, Any]:
     with get_db().read() as conn:
-        stored = get_preferences(conn)
+        stored = get_preferences(conn, owner_id)
     return {**DEFAULTS, **stored}
 
 
-def update_preferences(values: dict[str, Any]) -> dict[str, Any]:
+def update_preferences(owner_id: str, values: dict[str, Any]) -> dict[str, Any]:
     clean = {
         k: v
         for k, v in values.items()
         if k in DEFAULTS and k not in {"privacy.telemetry", "privacy.cloud_features"}
     }
     with get_db().tx() as conn:
-        set_preferences(conn, clean)
-    return all_preferences()
+        set_preferences(conn, owner_id, clean)
+    return all_preferences(owner_id)
 
 
-def reset_preferences(section: str | None = None) -> dict[str, Any]:
+def reset_preferences(owner_id: str, section: str | None = None) -> dict[str, Any]:
     with get_db().tx() as conn:
         if section is None:
-            clear_preferences(conn)
+            clear_preferences(conn, owner_id)
         else:
             keys = [item["key"] for item in SCHEMA if item["section"].lower() == section.lower()]
-            set_preferences(conn, dict.fromkeys(keys))
-    return all_preferences()
+            set_preferences(conn, owner_id, dict.fromkeys(keys))
+    return all_preferences(owner_id)

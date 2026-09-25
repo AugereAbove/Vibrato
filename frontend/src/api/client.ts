@@ -71,6 +71,9 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw offlineError()
   }
+  if (response.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('vibrato:unauthorized'))
+  }
   if (!response.ok) throw await parseError(response)
   return response
 }

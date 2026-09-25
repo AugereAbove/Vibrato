@@ -224,9 +224,9 @@ def measure_sample(step: str, features: Any, quality: dict[str, Any]) -> dict[st
     return result
 
 
-def start_calibration(name: str) -> dict[str, Any]:
+def start_calibration(name: str, owner_id: str) -> dict[str, Any]:
     with get_db().tx() as conn:
-        return calibration_store.create_profile(conn, name or "Calibration")
+        return calibration_store.create_profile(conn, name or "Calibration", owner_id)
 
 
 def add_sample(profile_id: str, step: str, source: Path, original_name: str) -> dict[str, Any]:

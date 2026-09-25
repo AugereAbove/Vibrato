@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -19,10 +19,10 @@ from ...services.analysis_service import (
 )
 from ...storage import spectrogram_path
 from ...store import analyses as analysis_store
-from ...store import recordings as recording_store
 from ...tasks.manager import get_tasks
 from ...util import stable_hash
 from ..binary import encode_matrix, feature_bundle
+from ..deps import User, ensure_owns_recording, get_current_user
 from ..errors import NotFound
 from .common import task_response
 
@@ -35,17 +35,14 @@ class AnalyzeRequest(BaseModel):
     force: bool = False
 
 
-def _recording(recording_id: str) -> dict[str, Any]:
+def _recording(recording_id: str, user: User) -> dict[str, Any]:
     with get_db().read() as conn:
-        recording = recording_store.get_recording(conn, recording_id)
-    if recording is None:
-        raise NotFound("This recording does not exist.")
-    return recording
+        return ensure_owns_recording(conn, recording_id, user)
 
 
 @router.post("/recordings/{recording_id}/analyze")
-def analyze(recording_id: str, body: AnalyzeRequest) -> dict[str, Any]:
-    recording = _recording(recording_id)
+def analyze(recording_id: str, body: AnalyzeRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    recording = _recording(recording_id, user)
     state = get_tasks().submit(
         "analyze",
         lambda ctx: {"analysis_id": ensure_analysis(recording_id, ctx, force=body.force)["id"]},
@@ -58,8 +55,8 @@ def analyze(recording_id: str, body: AnalyzeRequest) -> dict[str, Any]:
 
 
 @router.get("/recordings/{recording_id}/analysis")
-def analysis(recording_id: str) -> dict[str, Any]:
-    recording = _recording(recording_id)
+def analysis(recording_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    recording = _recording(recording_id, user)
     row = current_analysis(recording_id)
     if row is None:
         return {"status": "none", "recording_id": recording_id}
@@ -89,7 +86,8 @@ def analysis(recording_id: str) -> dict[str, Any]:
 
 
 @router.get("/recordings/{recording_id}/features")
-def features(recording_id: str) -> Response:
+def features(recording_id: str, user: User = Depends(get_current_user)) -> Response:
+    _recording(recording_id, user)
     row = current_analysis(recording_id)
     if row is None or not row.get("features_path"):
         raise NotFound("This recording has not been analysed yet.")
@@ -104,8 +102,10 @@ def features(recording_id: str) -> Response:
 
 
 @router.get("/recordings/{recording_id}/spectrogram")
-def spectrogram(recording_id: str, resolution: str = "medium", max_hz: float = 8000.0) -> Response:
-    recording = _recording(recording_id)
+def spectrogram(
+    recording_id: str, resolution: str = "medium", max_hz: float = 8000.0, user: User = Depends(get_current_user)
+) -> Response:
+    recording = _recording(recording_id, user)
     bins, hop_s, n_fft = RESOLUTIONS.get(resolution, RESOLUTIONS["medium"])
     max_hz = float(min(16000.0, max(2000.0, max_hz)))
     key = stable_hash({"bins": bins, "hop": hop_s, "fft": n_fft, "max": max_hz, "v": 1})

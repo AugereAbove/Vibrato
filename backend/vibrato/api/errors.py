@@ -16,6 +16,8 @@ STATUS_BY_CODE = {
     "too_large": 413,
     "model_unavailable": 424,
     "canonical_missing": 410,
+    "unauthorized": 401,
+    "forbidden": 403,
 }
 
 
@@ -26,6 +28,26 @@ class NotFound(UserFacingError):
             why="It may have been deleted or never existed.",
             action="Refresh the view.",
             code="not_found",
+        )
+
+
+class Unauthorized(UserFacingError):
+    def __init__(self, what: str = "Sign in to continue.") -> None:
+        super().__init__(
+            what=what,
+            why="You are not signed in, or your session has expired.",
+            action="Use your invite link to sign in again.",
+            code="unauthorized",
+        )
+
+
+class Forbidden(UserFacingError):
+    def __init__(self, what: str = "This action is restricted.") -> None:
+        super().__init__(
+            what=what,
+            why="Only the site owner can do this.",
+            action="Ask the site owner if you need this.",
+            code="forbidden",
         )
 
 
