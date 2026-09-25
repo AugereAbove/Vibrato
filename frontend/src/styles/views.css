@@ -8,6 +8,7 @@
 
 .coach-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -33,6 +34,10 @@
 
 .coach-panel.is-collapsed .coach-toggle .icon {
   transform: rotate(-90deg);
+}
+
+.coach-heading {
+  min-width: min(260px, 100%);
 }
 
 .coach-heading h3 {
@@ -68,12 +73,12 @@
 
 .finding-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr));
   gap: 10px;
 }
 
 .finding-grid.is-compact {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   margin-top: 8px;
 }
 

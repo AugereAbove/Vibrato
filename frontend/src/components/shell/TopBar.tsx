@@ -163,7 +163,7 @@ export function TopBar({ route }: { route: Route }) {
       </div>
       <div className="topbar-right">
         <SaveState />
-        <div className="row" style={{ gap: 0 }}>
+        <div className="row topbar-history" style={{ gap: 0 }}>
           <IconButton
             icon="undo"
             label={canUndo ? `Undo ${undoLabel}` : 'Nothing to undo'}
@@ -180,19 +180,21 @@ export function TopBar({ route }: { route: Route }) {
           />
         </div>
         <ComputeChip />
-        <Tooltip content="Coach: plain-language advice. Analyst: measurements and explanations. Research: raw graphs, confidence and analyzer details.">
-          <Segmented<ViewMode>
-            size="sm"
-            ariaLabel="Detail level"
-            value={mode}
-            onChange={(value) => setPref('display.view_mode', value)}
-            options={[
-              { value: 'coach', label: 'Coach' },
-              { value: 'analyst', label: 'Analyst' },
-              { value: 'research', label: 'Research' },
-            ]}
-          />
-        </Tooltip>
+        <div className="topbar-mode">
+          <Tooltip content="Coach: plain-language advice. Analyst: measurements and explanations. Research: raw graphs, confidence and analyzer details.">
+            <Segmented<ViewMode>
+              size="sm"
+              ariaLabel="Detail level"
+              value={mode}
+              onChange={(value) => setPref('display.view_mode', value)}
+              options={[
+                { value: 'coach', label: 'Coach' },
+                { value: 'analyst', label: 'Analyst' },
+                { value: 'research', label: 'Research' },
+              ]}
+            />
+          </Tooltip>
+        </div>
         <button
           type="button"
           className="palette-trigger"

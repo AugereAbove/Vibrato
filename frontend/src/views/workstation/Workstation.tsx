@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { comparisonsApi, recordingsApi } from '../../api/endpoints'
 import type { Anchor, Recording } from '../../api/types'
 import { engine } from '../../audio/engine'
@@ -13,6 +13,7 @@ import { MenuButton, type MenuEntry } from '../../components/ui/Menu'
 import { openContextMenu } from '../../components/ui/contextMenu'
 import { LAYERS } from '../../lib/categories'
 import { formatTime } from '../../lib/format'
+import { useMediaQuery } from '../../lib/useMediaQuery'
 import { keys, useAlignmentPath, useBookmarks, useSections } from '../../state/data'
 import { attempt } from '../../state/errors'
 import type { ViewMode } from '../../state/prefs'
@@ -106,6 +107,7 @@ export function Workstation({
   const inspectorWidth = useUi((s) => s.inspectorWidth)
   const bottomHeight = useUi((s) => s.bottomHeight)
   const bottomOpen = useUi((s) => s.bottomOpen)
+  const narrow = useMediaQuery('(max-width: 900px)')
   const layers = useLayers(mode)
   const bookmarks = useBookmarks(reference?.id ?? null)
   const sections = useSections(reference?.id ?? null)
@@ -406,14 +408,17 @@ export function Workstation({
     )
   }
 
+  useEffect(() => {
+    if (narrow) setUi({ sidebarOpen: false, inspectorOpen: false })
+  }, [narrow])
+
+  const columns = narrow
+    ? '0px 0px minmax(0, 1fr) 0px 0px'
+    : `${sidebarOpen ? `${sidebarWidth}px` : '0px'} ${sidebarOpen ? '4px' : '0px'} minmax(0, 1fr) ${inspectorOpen ? '4px' : '0px'} ${inspectorOpen ? `${inspectorWidth}px` : '0px'}`
+
   return (
     <div className="workstation-shell">
-      <div
-        className="workstation"
-        style={{
-          gridTemplateColumns: `${sidebarOpen ? `${sidebarWidth}px` : '0px'} ${sidebarOpen ? '4px' : '0px'} minmax(0, 1fr) ${inspectorOpen ? '4px' : '0px'} ${inspectorOpen ? `${inspectorWidth}px` : '0px'}`,
-        }}
-      >
+      <div className={`workstation${narrow ? ' is-narrow' : ''}`} style={{ gridTemplateColumns: columns }}>
         <div className={`sidebar-slot${sidebarOpen ? '' : ' is-collapsed'}`}>
           {sidebarOpen ? (
             <Sidebar
