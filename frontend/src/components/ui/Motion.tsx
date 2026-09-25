@@ -42,9 +42,11 @@ export function ScoreRing({
       className={`score-ring tone-${tone}${lowConfidence ? ' is-uncertain' : ''}`}
       style={{ width: size, height: size }}
       role="img"
-      aria-label={`${label ?? 'Score'} ${score == null ? 'not available' : score.toFixed(0)} out of 100${
-        lowConfidence ? ', low confidence' : ''
-      }`}
+      aria-label={
+        score == null
+          ? `${label ?? 'Score'} not available`
+          : `${label ?? 'Score'} ${score.toFixed(0)} out of 100${lowConfidence ? ', low confidence' : ''}`
+      }
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <circle className="score-ring-track" cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} />

@@ -1,11 +1,12 @@
 export function formatTime(seconds: number, decimals = 2): string {
   if (!Number.isFinite(seconds)) return '--:--'
-  const sign = seconds < 0 ? '-' : ''
-  const value = Math.abs(seconds)
-  const minutes = Math.floor(value / 60)
-  const rest = value - minutes * 60
-  const whole = Math.floor(rest)
-  const fraction = decimals > 0 ? (rest - whole).toFixed(decimals).slice(1) : ''
+  const scale = 10 ** decimals
+  const total = Math.round(Math.abs(seconds) * scale)
+  const sign = seconds < 0 && total > 0 ? '-' : ''
+  const minutes = Math.floor(total / (60 * scale))
+  const rest = total - minutes * 60 * scale
+  const whole = Math.floor(rest / scale)
+  const fraction = decimals > 0 ? `.${String(rest - whole * scale).padStart(decimals, '0')}` : ''
   return `${sign}${minutes}:${String(whole).padStart(2, '0')}${fraction}`
 }
 
@@ -16,12 +17,13 @@ export function formatSeconds(seconds: number | null | undefined, decimals = 2):
 
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return '–'
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`
-  const minutes = Math.floor(seconds / 60)
-  const rest = Math.round(seconds - minutes * 60)
+  if (seconds < 9.95) return `${seconds.toFixed(1)} s`
+  const total = Math.round(seconds)
+  if (total < 60) return `${total} s`
+  const minutes = Math.floor(total / 60)
+  const rest = total - minutes * 60
   if (minutes < 60) return rest ? `${minutes} min ${rest} s` : `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  return `${hours} h ${minutes % 60} min`
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
 export function formatNumber(value: number | null | undefined, decimals = 1): string {
