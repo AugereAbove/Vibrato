@@ -204,3 +204,26 @@ def test_short_silence_upload_is_rejected(client: TestClient) -> None:
         files={"file": ("s.wav", wav_bytes(np.zeros(2000)), "audio/wav")},
     )
     assert response.status_code == 422 and response.json()["error"]["code"] == "too_short"
+
+
+def test_serves_built_frontend(tmp_path) -> None:
+    from vibrato.api.app import create_app
+    from vibrato.config import Settings
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>Vibrato</title>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    (dist / "favicon.svg").write_text("<svg/>")
+    (tmp_path / "secret.txt").write_text("nope")
+    settings = Settings(data_dir=tmp_path / "data", workers=1, frontend_dist=dist)
+    with TestClient(create_app(settings)) as app:
+        assert "<title>Vibrato</title>" in app.get("/").text
+        assert app.get("/assets/app.js").text == "console.log(1)"
+        assert app.get("/favicon.svg").text == "<svg/>"
+        deep = app.get("/p/abc/compare")
+        assert deep.status_code == 200 and "<title>Vibrato</title>" in deep.text
+        assert "nope" not in app.get("/..%2Fsecret.txt").text
+        missing = app.get("/api/does-not-exist")
+        assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
+        assert app.get("/api/health").json()["status"] == "ok"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
@@ -56,8 +56,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if assets.exists():
             app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
 
-        @app.get("/{path:path}", include_in_schema=False)
-        async def spa(path: str) -> FileResponse | JSONResponse:
+        @app.get("/{path:path}", include_in_schema=False, response_model=None)
+        async def spa(path: str) -> Response:
             if path.startswith("api/"):
                 return JSONResponse(
                     status_code=404,
