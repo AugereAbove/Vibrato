@@ -21,6 +21,7 @@ SORTS = {
     "name": "p.name COLLATE NOCASE ASC",
     "created": "p.created_at DESC",
     "updated": "p.updated_at DESC",
+    "score": "best_score IS NULL, best_score DESC",
 }
 
 _SELECT = """
