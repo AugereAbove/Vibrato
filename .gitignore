@@ -27,8 +27,8 @@ frontend/coverage/
 *.pt
 *.onnx
 *.ckpt
-/test-results/
-/playwright-report/
+test-results/
+playwright-report/
 /screenshots-tmp/
 .DS_Store
 Thumbs.db
