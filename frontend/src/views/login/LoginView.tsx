@@ -17,8 +17,6 @@ export function LoginView() {
     }
     setSubmitting(true)
     setError(null)
-    // The claim endpoint sets the session cookie and redirects - a full
-    // navigation, not a fetch, so the browser stores the cookie normally.
     window.location.href = authApi.claimUrl(trimmed)
   }
 

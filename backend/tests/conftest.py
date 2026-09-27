@@ -72,11 +72,6 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
 
     settings = Settings(data_dir=tmp_path_factory.mktemp("api") / "data", workers=2, deterministic=True)
     with TestClient(create_app(settings)) as test_client:
-        # The app's own startup bootstraps a single owner user with an unused
-        # invite code (see auth_service.bootstrap_owner). Claim it here so
-        # every test using this fixture is already signed in as the owner,
-        # matching the site's real first-run flow instead of a test-only
-        # backdoor.
         with get_db().read() as conn:
             owner = auth_store.find_owner(conn)
             assert owner is not None

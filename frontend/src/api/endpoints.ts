@@ -111,9 +111,6 @@ export const projectsApi = {
   createDemo: () => http.post<{ task: Task }>('/demo'),
 }
 
-// Cloudflare Tunnel (used for the public hostname) caps a single request
-// body at ~100MB. Anything at or above this goes through the chunked
-// /uploads/* endpoints instead of one multipart POST.
 const CHUNKED_UPLOAD_THRESHOLD = 20 * 1024 * 1024
 const CHUNK_SIZE = 8 * 1024 * 1024
 

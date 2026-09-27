@@ -18,10 +18,6 @@ from ..errors import Forbidden, NotFound
 
 router = APIRouter(tags=["uploads"])
 
-# Chunked uploads let a large recording cross a request-size-limited proxy
-# (e.g. Cloudflare Tunnel's ~100MB cap) as many small requests instead of one
-# giant one. This is a short-lived, in-memory staging area - nothing here is
-# persisted data, so it lives outside the SQLite store.
 _UPLOAD_TTL_S = 3600.0
 
 
@@ -32,7 +28,7 @@ class _PendingUpload:
     filename: str
     created_at: float = field(default_factory=time.monotonic)
     received: set[int] = field(default_factory=set)
-    assembled: Path | None = None  # set once complete_upload() has run
+    assembled: Path | None = None
 
 
 _uploads: dict[str, _PendingUpload] = {}

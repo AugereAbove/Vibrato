@@ -1,7 +1,3 @@
--- Multi-tenant auth: users, auth_sessions, invites, and ownership scoping.
--- Named `auth_sessions` (not `sessions`) because `sessions` already exists
--- in 0001_initial.sql for practice/recording sessions.
-
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
@@ -28,7 +24,6 @@ CREATE TABLE invites (
 
 CREATE INDEX idx_invites_user ON invites(user_id);
 
--- Direct ownership columns.
 ALTER TABLE projects ADD COLUMN owner_id TEXT;
 ALTER TABLE calibration_profiles ADD COLUMN owner_id TEXT;
 ALTER TABLE reference_profiles ADD COLUMN owner_id TEXT;
@@ -37,8 +32,6 @@ CREATE INDEX idx_projects_owner ON projects(owner_id);
 CREATE INDEX idx_calibration_owner ON calibration_profiles(owner_id);
 CREATE INDEX idx_reference_profiles_owner ON reference_profiles(owner_id);
 
--- user_preferences was a single global key/value store; scope it per-owner.
--- SQLite can't change a table's PRIMARY KEY in place, so rebuild it.
 ALTER TABLE user_preferences RENAME TO user_preferences_old;
 
 CREATE TABLE user_preferences (
@@ -49,7 +42,6 @@ CREATE TABLE user_preferences (
   PRIMARY KEY (owner_id, key)
 );
 
--- Bootstrap a single owner user so nothing already on disk becomes orphaned.
 INSERT INTO users (id, display_name, is_owner, created_at)
 VALUES ('usr_owner_bootstrap', 'Owner', 1, strftime('%Y-%m-%dT%H:%M:%f', 'now') || '+00:00');
 
