@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from vibrato.demo.songs import DEMO_LYRICS
 
-from .conftest import wav_bytes
+from .conftest import sign_in_owner, wav_bytes
 from .helpers import wait_for
 
 
@@ -184,6 +184,7 @@ def test_persistence_across_restart(tmp_path, rendered) -> None:
 
     settings = Settings(data_dir=tmp_path / "persist", workers=1)
     with TestClient(create_app(settings)) as first:
+        sign_in_owner(first)
         created = first.post("/api/projects", json={"name": "Survivor"}).json()["project"]
         upload = first.post(
             f"/api/projects/{created['id']}/recordings",
@@ -192,6 +193,7 @@ def test_persistence_across_restart(tmp_path, rendered) -> None:
         )
         assert upload.status_code == 200
     with TestClient(create_app(Settings(data_dir=tmp_path / "persist", workers=1))) as second:
+        sign_in_owner(second)
         project = second.get(f"/api/projects/{created['id']}").json()
         assert project["project"]["name"] == "Survivor" and len(project["recordings"]) == 1
 

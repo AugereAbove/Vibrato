@@ -21,6 +21,8 @@ from ..deps import (
     ensure_owns_comparison,
     ensure_owns_recording,
     ensure_owns_render,
+    ensure_recording_in_project,
+    ensure_task_capacity,
     get_current_user,
 )
 from ..errors import NotFound
@@ -70,6 +72,9 @@ class RenderRequest(BaseModel):
 def create_comparison(body: CompareRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
         take = ensure_owns_recording(conn, body.take_id, user)
+        if body.reference_id:
+            ensure_recording_in_project(conn, body.reference_id, take.get("project_id"), user)
+        ensure_task_capacity(conn, user)
     state = get_tasks().submit(
         "compare",
         lambda ctx: comparison_service.run_comparison(body.take_id, body.reference_id, ctx, body.force_align),
@@ -121,6 +126,7 @@ def rescore(
 def realign(comparison_id: str, body: RegionRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
         comparison = ensure_owns_comparison(conn, comparison_id, user)
+        ensure_task_capacity(conn, user)
     state = get_tasks().submit(
         "realign",
         lambda ctx: comparison_service.realign(comparison_id, body.start_s, body.end_s),
@@ -242,6 +248,7 @@ def transforms(user: User = Depends(get_current_user)) -> dict[str, Any]:
 def render(take_id: str, body: RenderRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().read() as conn:
         take = ensure_owns_recording(conn, take_id, user)
+        ensure_task_capacity(conn, user)
     state = get_tasks().submit(
         "counterfactual",
         lambda ctx: counterfactual_service.render(take_id, body.transform, ctx),

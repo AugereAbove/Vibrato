@@ -318,16 +318,28 @@ export interface AuthUser {
 export interface Invite {
   code: string
   user_id: string
-  display_name: string
   created_at: string
   used_at: string | null
+}
+
+export interface TesterAccount {
+  id: string
+  display_name: string
+  disabled: number
+  created_at: string
+  pending_code: string | null
+  last_claimed_at: string | null
+  active_sessions: number
+  projects: number
 }
 
 export const authApi = {
   me: (signal?: AbortSignal) => http.get<{ user: AuthUser }>('/auth/me', signal),
   logout: () => http.post<{ ok: boolean }>('/auth/logout'),
-  claimUrl: (code: string) => http.url(`/auth/claim/${code}`),
-  listInvites: () => http.get<{ invites: Invite[] }>('/auth/invites'),
+  claimUrl: (code: string) => http.url(`/auth/claim/${encodeURIComponent(code)}`),
+  listUsers: () => http.get<{ users: TesterAccount[] }>('/auth/users'),
   createInvite: (displayName: string) =>
     http.post<{ invite: Invite }>('/auth/invites', { display_name: displayName }),
+  newLink: (userId: string) => http.post<{ invite: Invite }>(`/auth/users/${userId}/link`),
+  revoke: (userId: string) => http.post<{ revoked: boolean }>(`/auth/users/${userId}/revoke`),
 }

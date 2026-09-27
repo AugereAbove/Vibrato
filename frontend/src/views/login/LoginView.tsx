@@ -4,9 +4,14 @@ import { Button } from '../../components/ui/Button'
 import { TextField } from '../../components/ui/Controls'
 import { Icon } from '../../components/ui/Icon'
 
+function initialError(): string | null {
+  if (new URLSearchParams(window.location.search).get('invite') !== 'invalid') return null
+  return 'That link has already been used or has expired. Ask the project owner for a new one.'
+}
+
 export function LoginView() {
   const [code, setCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError)
   const [submitting, setSubmitting] = useState(false)
 
   const submit = () => {

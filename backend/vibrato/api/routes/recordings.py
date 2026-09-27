@@ -17,7 +17,17 @@ from ...storage import peaks_path, playback_path, stretched_path
 from ...store import misc as misc_store
 from ...store import recordings as recording_store
 from ...tasks.manager import get_tasks
-from ..deps import User, ensure_owns_bookmark, ensure_owns_project, ensure_owns_recording, get_current_user
+from ..deps import (
+    User,
+    ensure_owns_bookmark,
+    ensure_owns_project,
+    ensure_owns_recording,
+    ensure_owns_reference_profile,
+    ensure_recording_in_project,
+    ensure_storage_quota,
+    ensure_task_capacity,
+    get_current_user,
+)
 from ..errors import NotFound
 from .common import save_upload
 from .uploads import take_completed_upload
@@ -124,6 +134,10 @@ async def upload_recording(
 ) -> dict[str, Any]:
     with get_db().read() as conn:
         ensure_owns_project(conn, project_id, user)
+        if reference_id:
+            ensure_recording_in_project(conn, reference_id, project_id, user)
+        if auto_analyze:
+            ensure_task_capacity(conn, user)
     if upload_id is not None:
         path, original = take_completed_upload(upload_id, user)
     elif file is not None:
@@ -131,6 +145,8 @@ async def upload_recording(
     else:
         raise NotFound("No file or completed upload was provided.")
     try:
+        with get_db().read() as conn:
+            ensure_storage_quota(conn, user, path.stat().st_size)
         region = (
             (region_start_s, region_end_s)
             if region_start_s is not None and region_end_s is not None
@@ -200,6 +216,10 @@ def update_recording(
     fields = body.model_dump(exclude_unset=True)
     with get_db().tx() as conn:
         current = ensure_owns_recording(conn, recording_id, user)
+        if fields.get("reference_profile_id"):
+            ensure_owns_reference_profile(conn, fields["reference_profile_id"], user)
+        if fields.get("reference_recording_id"):
+            ensure_recording_in_project(conn, fields["reference_recording_id"], current.get("project_id"), user)
         if fields.get("is_primary") and current.get("project_id"):
             conn.execute(
                 "UPDATE reference_recordings SET is_primary = 0 WHERE recording_id IN (SELECT id FROM recordings WHERE project_id = ?)",
@@ -353,7 +373,7 @@ def stretched(
     recording_id: str, speed: float = 0.75, user: User = Depends(get_current_user)
 ) -> FileResponse:
     recording = _recording(recording_id, user)
-    speed = float(min(1.0, max(MIN_SPEED, speed)))
+    speed = round(min(1.0, max(MIN_SPEED, speed)) * 20) / 20
     factor = 1.0 / speed
     path = stretched_path(recording["content_hash"], factor)
     if not path.exists():

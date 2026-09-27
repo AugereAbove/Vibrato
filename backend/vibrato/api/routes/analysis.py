@@ -22,7 +22,7 @@ from ...store import analyses as analysis_store
 from ...tasks.manager import get_tasks
 from ...util import stable_hash
 from ..binary import encode_matrix, feature_bundle
-from ..deps import User, ensure_owns_recording, get_current_user
+from ..deps import User, ensure_owns_recording, ensure_task_capacity, get_current_user
 from ..errors import NotFound
 from .common import task_response
 
@@ -43,6 +43,8 @@ def _recording(recording_id: str, user: User) -> dict[str, Any]:
 @router.post("/recordings/{recording_id}/analyze")
 def analyze(recording_id: str, body: AnalyzeRequest, user: User = Depends(get_current_user)) -> dict[str, Any]:
     recording = _recording(recording_id, user)
+    with get_db().read() as conn:
+        ensure_task_capacity(conn, user)
     state = get_tasks().submit(
         "analyze",
         lambda ctx: {"analysis_id": ensure_analysis(recording_id, ctx, force=body.force)["id"]},
@@ -107,7 +109,7 @@ def spectrogram(
 ) -> Response:
     recording = _recording(recording_id, user)
     bins, hop_s, n_fft = RESOLUTIONS.get(resolution, RESOLUTIONS["medium"])
-    max_hz = float(min(16000.0, max(2000.0, max_hz)))
+    max_hz = float(round(min(16000.0, max(2000.0, max_hz)) / 1000.0) * 1000)
     key = stable_hash({"bins": bins, "hop": hop_s, "fft": n_fft, "max": max_hz, "v": 1})
     path = spectrogram_path(recording["content_hash"], key)
     if path.exists():

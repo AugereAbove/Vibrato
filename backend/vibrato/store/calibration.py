@@ -61,7 +61,11 @@ def save_sample(
 
 
 def finalize(conn: sqlite3.Connection, profile_id: str, results: dict[str, Any]) -> dict[str, Any] | None:
-    conn.execute("UPDATE calibration_profiles SET is_active = 0")
+    conn.execute(
+        "UPDATE calibration_profiles SET is_active = 0 "
+        "WHERE owner_id = (SELECT owner_id FROM calibration_profiles WHERE id = ?)",
+        (profile_id,),
+    )
     conn.execute(
         "UPDATE calibration_profiles SET status = 'complete', is_active = 1, results_json = ?, finalized_at = ? WHERE id = ?",
         (dumps(results), utcnow(), profile_id),
@@ -69,12 +73,12 @@ def finalize(conn: sqlite3.Connection, profile_id: str, results: dict[str, Any])
     return get_profile(conn, profile_id)
 
 
-def set_active(conn: sqlite3.Connection, profile_id: str | None) -> None:
-    conn.execute("UPDATE calibration_profiles SET is_active = 0")
+def set_active(conn: sqlite3.Connection, owner_id: str, profile_id: str | None) -> None:
+    conn.execute("UPDATE calibration_profiles SET is_active = 0 WHERE owner_id = ?", (owner_id,))
     if profile_id:
         conn.execute(
-            "UPDATE calibration_profiles SET is_active = 1 WHERE id = ? AND status = 'complete'",
-            (profile_id,),
+            "UPDATE calibration_profiles SET is_active = 1 WHERE id = ? AND owner_id = ? AND status = 'complete'",
+            (profile_id, owner_id),
         )
 
 

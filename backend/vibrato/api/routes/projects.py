@@ -12,7 +12,18 @@ from ...store import misc as misc_store
 from ...store import projects as project_store
 from ...store import recordings as recording_store
 from ...tasks.manager import get_tasks
-from ..deps import User, ensure_owns_project, get_current_user, owner_scope
+from ..deps import (
+    User,
+    ensure_owns_comparison,
+    ensure_owns_project,
+    ensure_owns_reference_profile,
+    ensure_project_quota,
+    ensure_recording_in_project,
+    ensure_storage_quota,
+    ensure_task_capacity,
+    get_current_user,
+    owner_scope,
+)
 from ..errors import NotFound
 from .common import save_upload, task_response
 
@@ -67,6 +78,7 @@ def list_projects(
 @router.post("/projects")
 def create_project(body: ProjectCreate, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
+        ensure_project_quota(conn, user)
         return {
             "project": project_store.create_project(
                 conn,
@@ -95,9 +107,12 @@ def get_project(project_id: str, user: User = Depends(get_current_user)) -> dict
 def update_project(
     project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user)
 ) -> dict[str, Any]:
+    fields = body.model_dump(exclude_unset=True)
     with get_db().tx() as conn:
         ensure_owns_project(conn, project_id, user)
-        project = project_store.update_project(conn, project_id, **body.model_dump(exclude_unset=True))
+        if fields.get("reference_profile_id"):
+            ensure_owns_reference_profile(conn, fields["reference_profile_id"], user)
+        project = project_store.update_project(conn, project_id, **fields)
     if project is None:
         raise NotFound("This project does not exist.")
     return {"project": project}
@@ -116,6 +131,7 @@ def delete_project(project_id: str, user: User = Depends(get_current_user)) -> d
 def duplicate_project(project_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
         ensure_owns_project(conn, project_id, user)
+        ensure_project_quota(conn, user)
         project = project_store.duplicate_project(conn, project_id)
     if project is None:
         raise NotFound("This project does not exist.")
@@ -128,6 +144,8 @@ def project_progress(
 ) -> dict[str, Any]:
     with get_db().read() as conn:
         ensure_owns_project(conn, project_id, user)
+        if reference_id is not None:
+            ensure_recording_in_project(conn, reference_id, project_id, user)
     return progress_service.project_progress(project_id, reference_id)
 
 
@@ -151,6 +169,10 @@ def report(
 ) -> HTMLResponse:
     with get_db().read() as conn:
         ensure_owns_project(conn, project_id, user)
+        if comparison_id is not None:
+            comparison = ensure_owns_comparison(conn, comparison_id, user)
+            if comparison.get("project_id") != project_id:
+                raise NotFound("That comparison is not part of this project.")
     headers = {"Content-Disposition": f'attachment; filename="report-{project_id}.html"'} if download else {}
     return HTMLResponse(export_service.report_html(project_id, comparison_id), headers=headers)
 
@@ -167,6 +189,9 @@ def backup(project_id: str, user: User = Depends(get_current_user)) -> FileRespo
 async def restore(file: UploadFile = File(...), user: User = Depends(get_current_user)) -> dict[str, Any]:
     path, _ = await save_upload(file)
     try:
+        with get_db().read() as conn:
+            ensure_project_quota(conn, user)
+            ensure_storage_quota(conn, user, path.stat().st_size)
         return {"project": export_service.restore_project(path, user.id)}
     finally:
         path.unlink(missing_ok=True)
@@ -232,6 +257,9 @@ def clear_overrides(
 
 @router.post("/demo")
 def create_demo(user: User = Depends(get_current_user)) -> dict[str, Any]:
+    with get_db().read() as conn:
+        ensure_project_quota(conn, user)
+        ensure_task_capacity(conn, user)
     return task_response(
         get_tasks().submit(
             "demo",

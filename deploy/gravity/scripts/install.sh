@@ -40,10 +40,13 @@ fi
 echo "==> Installing the backend and building the interface as the vibrato user"
 sudo -u vibrato -H bash -lc "cd '$APP_DIR' && ./setup.sh"
 
-echo "==> Installing the systemd service"
-cp "$APP_DIR/deploy/gravity/systemd/vibrato.service" /etc/systemd/system/vibrato.service
+echo "==> Installing the systemd service and daily backup timer"
+for unit in vibrato.service vibrato-backup.service vibrato-backup.timer; do
+  cp "$APP_DIR/deploy/gravity/systemd/$unit" "/etc/systemd/system/$unit"
+done
 systemctl daemon-reload
 systemctl enable vibrato
+systemctl enable --now vibrato-backup.timer
 systemctl restart vibrato
 
 echo

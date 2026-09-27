@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ...services import auth_service
 from ..deps import SESSION_COOKIE, User, get_current_user, require_owner
-from ..errors import NotFound
+from ..errors import Forbidden, NotFound
 
 router = APIRouter(tags=["auth"])
 
@@ -29,9 +29,9 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
 @router.get("/auth/claim/{code}")
 def claim(code: str, request: Request) -> RedirectResponse:
     try:
-        user, token, max_age = auth_service.claim_invite(code)
-    except KeyError:
-        raise NotFound("This invite link is invalid or has been removed.") from None
+        _, token, max_age = auth_service.claim_invite(code)
+    except auth_service.InviteInvalid:
+        return RedirectResponse(url="/?invite=invalid", status_code=302)
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
         SESSION_COOKIE,
@@ -55,11 +55,31 @@ def logout(request: Request) -> JSONResponse:
     return response
 
 
-@router.get("/auth/invites")
-def list_invites(user: User = Depends(require_owner)) -> dict[str, Any]:
-    return {"invites": auth_service.list_tester_invites()}
+@router.get("/auth/users")
+def list_users(user: User = Depends(require_owner)) -> dict[str, Any]:
+    return {"users": auth_service.list_testers()}
 
 
 @router.post("/auth/invites")
 def create_invite(body: InviteCreate, user: User = Depends(require_owner)) -> dict[str, Any]:
-    return {"invite": auth_service.create_tester_invite(body.display_name)}
+    return {"invite": auth_service.create_tester(body.display_name)}
+
+
+@router.post("/auth/users/{user_id}/link")
+def new_link(user_id: str, request: Request, user: User = Depends(require_owner)) -> dict[str, Any]:
+    try:
+        invite = auth_service.issue_new_link(user_id, request.cookies.get(SESSION_COOKIE))
+    except KeyError:
+        raise NotFound("This account does not exist.") from None
+    return {"invite": invite}
+
+
+@router.post("/auth/users/{user_id}/revoke")
+def revoke(user_id: str, user: User = Depends(require_owner)) -> dict[str, Any]:
+    try:
+        auth_service.revoke(user_id)
+    except KeyError:
+        raise NotFound("This account does not exist.") from None
+    except auth_service.AccessDenied:
+        raise Forbidden("The owner account can't be revoked. Issue a new owner link instead.") from None
+    return {"revoked": True}

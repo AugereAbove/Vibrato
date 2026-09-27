@@ -37,8 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         owner_code = auth_service.bootstrap_owner()
         if owner_code:
             log.warning(
-                "First run: sign in as the owner by visiting /api/auth/claim/%s "
-                "(this is logged only once - save the link)",
+                "Owner sign-in link (single use, valid 14 days): /api/auth/claim/%s",
                 owner_code,
             )
         init_tasks(active.workers)
@@ -53,8 +52,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="Vibrato",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if active.api_docs else None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json" if active.api_docs else None,
     )
     if active.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(active.trusted_hosts))

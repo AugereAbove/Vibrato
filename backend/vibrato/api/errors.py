@@ -18,6 +18,7 @@ STATUS_BY_CODE = {
     "canonical_missing": 410,
     "unauthorized": 401,
     "forbidden": 403,
+    "quota_exceeded": 429,
 }
 
 
@@ -38,6 +39,26 @@ class Unauthorized(UserFacingError):
             why="You are not signed in, or your session has expired.",
             action="Use your invite link to sign in again.",
             code="unauthorized",
+        )
+
+
+class QuotaExceeded(UserFacingError):
+    def __init__(self, what: str, action: str) -> None:
+        super().__init__(
+            what=what,
+            why="Each tester account has limits so one account can't slow the server down for everyone.",
+            action=action,
+            code="quota_exceeded",
+        )
+
+
+class TooLarge(UserFacingError):
+    def __init__(self, what: str) -> None:
+        super().__init__(
+            what=what,
+            why="The upload is larger than the server accepts.",
+            action="Use a shorter or compressed recording.",
+            code="too_large",
         )
 
 

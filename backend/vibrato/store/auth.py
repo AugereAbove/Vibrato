@@ -37,6 +37,10 @@ def get_owner_id(conn: sqlite3.Connection) -> str:
     return str(row["id"])
 
 
+def set_disabled(conn: sqlite3.Connection, user_id: str, disabled: bool) -> None:
+    conn.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(disabled), user_id))
+
+
 def create_invite(conn: sqlite3.Connection, user_id: str) -> dict[str, Any]:
     code = new_id("inv")
     conn.execute(
@@ -52,25 +56,40 @@ def get_invite(conn: sqlite3.Connection, code: str) -> dict[str, Any] | None:
     return row_to_dict(conn.execute("SELECT * FROM invites WHERE code = ?", (code,)).fetchone())
 
 
-def find_unused_invite_for_user(conn: sqlite3.Connection, user_id: str) -> dict[str, Any] | None:
+def find_usable_invite(conn: sqlite3.Connection, user_id: str, not_before: str) -> dict[str, Any] | None:
     return row_to_dict(
         conn.execute(
-            "SELECT * FROM invites WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
-            (user_id,),
+            "SELECT * FROM invites WHERE user_id = ? AND used_at IS NULL AND created_at > ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (user_id, not_before),
         ).fetchone()
     )
 
 
-def mark_invite_used(conn: sqlite3.Connection, code: str) -> None:
-    conn.execute("UPDATE invites SET used_at = ? WHERE code = ? AND used_at IS NULL", (utcnow(), code))
+def consume_invite(conn: sqlite3.Connection, code: str, not_before: str) -> bool:
+    cursor = conn.execute(
+        "UPDATE invites SET used_at = ? WHERE code = ? AND used_at IS NULL AND created_at > ?",
+        (utcnow(), code, not_before),
+    )
+    return cursor.rowcount == 1
 
 
-def list_tester_invites(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def delete_invites(conn: sqlite3.Connection, user_id: str) -> None:
+    conn.execute("DELETE FROM invites WHERE user_id = ?", (user_id,))
+
+
+def list_testers(conn: sqlite3.Connection, not_before: str) -> list[dict[str, Any]]:
+    now = utcnow()
     return rows_to_dicts(
         conn.execute(
-            "SELECT i.code, i.created_at, i.used_at, u.id AS user_id, u.display_name "
-            "FROM invites i JOIN users u ON u.id = i.user_id "
-            "WHERE u.is_owner = 0 ORDER BY i.created_at DESC"
+            "SELECT u.id, u.display_name, u.disabled, u.created_at, "
+            "(SELECT i.code FROM invites i WHERE i.user_id = u.id AND i.used_at IS NULL AND i.created_at > ? "
+            " ORDER BY i.created_at DESC LIMIT 1) AS pending_code, "
+            "(SELECT MAX(i.used_at) FROM invites i WHERE i.user_id = u.id) AS last_claimed_at, "
+            "(SELECT COUNT(*) FROM auth_sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS active_sessions, "
+            "(SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id) AS projects "
+            "FROM users u WHERE u.is_owner = 0 ORDER BY u.created_at DESC",
+            (not_before, now),
         ).fetchall()
     )
 
@@ -85,7 +104,8 @@ def create_session(conn: sqlite3.Connection, user_id: str, token: str, expires_a
 def get_session_user(conn: sqlite3.Connection, token: str) -> dict[str, Any] | None:
     return row_to_dict(
         conn.execute(
-            "SELECT u.* FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > ?",
+            "SELECT u.* FROM auth_sessions s JOIN users u ON u.id = s.user_id "
+            "WHERE s.token = ? AND s.expires_at > ? AND u.disabled = 0",
             (token, utcnow()),
         ).fetchone()
     )
@@ -93,3 +113,14 @@ def get_session_user(conn: sqlite3.Connection, token: str) -> dict[str, Any] | N
 
 def delete_session(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))
+
+
+def delete_sessions(conn: sqlite3.Connection, user_id: str, keep_token: str | None = None) -> None:
+    conn.execute(
+        "DELETE FROM auth_sessions WHERE user_id = ? AND token IS NOT ?",
+        (user_id, keep_token),
+    )
+
+
+def purge_expired_sessions(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM auth_sessions WHERE expires_at <= ?", (utcnow(),))

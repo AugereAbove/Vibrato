@@ -26,6 +26,13 @@ fi
 echo "==> Reinstalling dependencies and rebuilding the interface"
 sudo -u vibrato -H bash -lc "cd '$APP_DIR' && ./setup.sh"
 
+echo "==> Installing systemd units"
+for unit in vibrato.service vibrato-backup.service vibrato-backup.timer; do
+  cp "$APP_DIR/deploy/gravity/systemd/$unit" "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+systemctl enable --now vibrato-backup.timer
+
 echo "==> Restarting the service"
 systemctl restart vibrato
 systemctl --no-pager status vibrato

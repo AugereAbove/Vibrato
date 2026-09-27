@@ -6,12 +6,14 @@ from typing import Any
 
 from fastapi import Depends, Request
 
+from ..config import get_settings
 from ..db import get_db
 from ..store import auth as auth_store
 from ..store import comparisons as comparison_store
 from ..store import projects as project_store
 from ..store import recordings as recording_store
-from .errors import Forbidden, NotFound, Unauthorized
+from ..tasks.manager import get_tasks
+from .errors import Forbidden, NotFound, QuotaExceeded, Unauthorized
 
 SESSION_COOKIE = "vibrato_session"
 
@@ -127,3 +129,60 @@ def ensure_owns_task_project(conn: sqlite3.Connection, project_id: str | None, u
             raise NotFound("This task does not exist.")
         return
     ensure_owns_project(conn, project_id, user)
+
+
+def ensure_recording_in_project(
+    conn: sqlite3.Connection, recording_id: str, project_id: str | None, user: User
+) -> dict[str, Any]:
+    recording = ensure_owns_recording(conn, recording_id, user)
+    if recording.get("project_id") != project_id:
+        raise NotFound("That recording is not part of this project.")
+    return recording
+
+
+def storage_used(conn: sqlite3.Connection, user_id: str) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(a.size_bytes), 0) AS used FROM recordings r "
+        "JOIN audio_assets a ON a.content_hash = r.content_hash "
+        "WHERE r.project_id IN (SELECT id FROM projects WHERE owner_id = ?) "
+        "OR r.id IN (SELECT cs.recording_id FROM calibration_samples cs "
+        "JOIN calibration_profiles cp ON cp.id = cs.calibration_id WHERE cp.owner_id = ?)",
+        (user_id, user_id),
+    ).fetchone()
+    return int(row["used"])
+
+
+def ensure_storage_quota(conn: sqlite3.Connection, user: User, incoming_bytes: int) -> None:
+    if user.is_owner:
+        return
+    limit = get_settings().tester_storage_bytes
+    if storage_used(conn, user.id) + incoming_bytes > limit:
+        raise QuotaExceeded(
+            f"This account has used its {limit // (1024 * 1024)} MB of storage.",
+            "Delete recordings or projects you no longer need, then try again.",
+        )
+
+
+def ensure_project_quota(conn: sqlite3.Connection, user: User) -> None:
+    if user.is_owner:
+        return
+    limit = get_settings().tester_max_projects
+    count = conn.execute("SELECT COUNT(*) AS n FROM projects WHERE owner_id = ?", (user.id,)).fetchone()["n"]
+    if count >= limit:
+        raise QuotaExceeded(
+            f"This account already has {limit} projects.",
+            "Delete a project you no longer need, then try again.",
+        )
+
+
+def ensure_task_capacity(conn: sqlite3.Connection, user: User) -> None:
+    if user.is_owner:
+        return
+    limit = get_settings().tester_max_active_tasks
+    owned = {r["id"] for r in conn.execute("SELECT id FROM projects WHERE owner_id = ?", (user.id,))}
+    active = [t for t in get_tasks().list(True, None, limit=1_000_000) if t.get("project_id") in owned]
+    if len(active) >= limit:
+        raise QuotaExceeded(
+            f"This account already has {limit} analyses running.",
+            "Wait for them to finish, then try again.",
+        )

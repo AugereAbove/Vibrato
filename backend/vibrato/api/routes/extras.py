@@ -14,13 +14,15 @@ from ..deps import (
     ensure_owns_calibration_profile,
     ensure_owns_reference_profile,
     ensure_owns_task_project,
+    ensure_storage_quota,
     get_current_user,
     owner_scope,
 )
-from ..errors import NotFound
+from ..errors import NotFound, TooLarge
 from .common import save_upload
 
 router = APIRouter(tags=["extras"])
+CALIBRATION_SAMPLE_MAX_BYTES = 25 * 1024 * 1024
 
 
 class CalibrationCreate(BaseModel):
@@ -87,6 +89,11 @@ async def add_sample(
         ensure_owns_calibration_profile(conn, profile_id, user)
     path, name = await save_upload(file)
     try:
+        size = path.stat().st_size
+        if size > CALIBRATION_SAMPLE_MAX_BYTES:
+            raise TooLarge("Calibration samples are only a few seconds long; this file is too big to be one.")
+        with get_db().read() as conn:
+            ensure_storage_quota(conn, user, size)
         return calibration_service.add_sample(profile_id, step, path, name)
     finally:
         path.unlink(missing_ok=True)
@@ -103,14 +110,17 @@ def finalize(profile_id: str, user: User = Depends(get_current_user)) -> dict[st
 def activate(profile_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
         ensure_owns_calibration_profile(conn, profile_id, user)
-        calibration_store.set_active(conn, profile_id)
-        return {"active": calibration_store.active_profile(conn, user.id)}
+        profile_owner = conn.execute(
+            "SELECT owner_id FROM calibration_profiles WHERE id = ?", (profile_id,)
+        ).fetchone()["owner_id"]
+        calibration_store.set_active(conn, profile_owner, profile_id)
+        return {"active": calibration_store.active_profile(conn, profile_owner)}
 
 
 @router.post("/calibrations/deactivate")
 def deactivate(user: User = Depends(get_current_user)) -> dict[str, Any]:
     with get_db().tx() as conn:
-        calibration_store.set_active(conn, None)
+        calibration_store.set_active(conn, user.id, None)
     return {"active": None}
 
 

@@ -64,18 +64,43 @@ def isolated_settings(tmp_path: Path) -> Settings:
     return configure(Settings(data_dir=tmp_path / "data", workers=2, deterministic=True))
 
 
-@pytest.fixture(scope="module")
-def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
-    from vibrato.api.app import create_app
+@pytest.fixture(autouse=True)
+def preserve_app_globals() -> Iterator[None]:
+    import vibrato.config as config_module
+    import vibrato.db.connection as db_module
+    import vibrato.tasks.manager as tasks_module
+
+    saved = (config_module._settings, db_module._db, tasks_module._manager)
+    yield
+    config_module._settings, db_module._db, tasks_module._manager = saved
+
+
+def sign_in_owner(test_client: TestClient) -> None:
     from vibrato.db import get_db
     from vibrato.store import auth as auth_store
 
+    with get_db().tx() as conn:
+        owner = auth_store.find_owner(conn)
+        assert owner is not None
+        invite = auth_store.create_invite(conn, owner["id"])
+    response = test_client.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    assert response.status_code == 302 and response.headers["location"] == "/"
+
+
+def sign_in_tester(test_client: TestClient, name: str = "Tester") -> str:
+    from vibrato.services import auth_service
+
+    invite = auth_service.create_tester(name)
+    response = test_client.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    assert response.status_code == 302 and response.headers["location"] == "/"
+    return str(invite["user_id"])
+
+
+@pytest.fixture(scope="module")
+def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
+    from vibrato.api.app import create_app
+
     settings = Settings(data_dir=tmp_path_factory.mktemp("api") / "data", workers=2, deterministic=True)
     with TestClient(create_app(settings)) as test_client:
-        with get_db().read() as conn:
-            owner = auth_store.find_owner(conn)
-            assert owner is not None
-            invite = auth_store.find_unused_invite_for_user(conn, owner["id"])
-            assert invite is not None
-        test_client.get(f"/api/auth/claim/{invite['code']}")
+        sign_in_owner(test_client)
         yield test_client

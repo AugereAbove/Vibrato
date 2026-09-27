@@ -50,6 +50,10 @@ class Settings:
     app_base_url: str | None = None
     allowed_origins: tuple[str, ...] = ()
     trusted_hosts: tuple[str, ...] = ()
+    api_docs: bool = False
+    tester_storage_bytes: int = 2 * 1024 * 1024 * 1024
+    tester_max_projects: int = 25
+    tester_max_active_tasks: int = 3
     extra: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -113,6 +117,10 @@ def load_settings() -> Settings:
         app_base_url=os.environ.get("VIBRATO_APP_BASE_URL") or None,
         allowed_origins=tuple(_env_list("VIBRATO_ALLOWED_ORIGINS")),
         trusted_hosts=tuple(_env_list("VIBRATO_TRUSTED_HOSTS")),
+        api_docs=_env_bool("VIBRATO_API_DOCS", False),
+        tester_storage_bytes=_env_int("VIBRATO_TESTER_STORAGE_MB", 2048) * 1024 * 1024,
+        tester_max_projects=_env_int("VIBRATO_TESTER_MAX_PROJECTS", 25),
+        tester_max_active_tasks=_env_int("VIBRATO_TESTER_MAX_ACTIVE_TASKS", 3),
     )
 
 

@@ -10,34 +10,42 @@ from ..store import auth as auth_store
 
 log = get_logger("auth")
 SESSION_TTL = timedelta(days=90)
+INVITE_TTL = timedelta(days=14)
+
+
+class InviteInvalid(Exception):
+    pass
+
+
+class AccessDenied(Exception):
+    pass
+
+
+def _invite_cutoff() -> str:
+    return (datetime.now(UTC) - INVITE_TTL).isoformat(timespec="milliseconds")
 
 
 def bootstrap_owner() -> str | None:
-    """Ensure a single owner user exists and has an unused invite code.
-
-    Returns the code when one is freshly minted (so the caller can log it
-    once), or None when an unused owner invite already exists.
-    """
     with get_db().tx() as conn:
+        auth_store.purge_expired_sessions(conn)
         owner = auth_store.find_owner(conn)
         if owner is None:
             owner = auth_store.create_user(conn, "Owner", is_owner=True)
-        if auth_store.find_unused_invite_for_user(conn, owner["id"]) is not None:
+        if auth_store.find_usable_invite(conn, owner["id"], _invite_cutoff()) is not None:
             return None
-        invite = auth_store.create_invite(conn, owner["id"])
-        return invite["code"]
+        return auth_store.create_invite(conn, owner["id"])["code"]
 
 
 def claim_invite(code: str) -> tuple[dict[str, Any], str, int]:
-    """Claim an invite code, returning (user, session_token, max_age_seconds)."""
     with get_db().tx() as conn:
         invite = auth_store.get_invite(conn, code)
         if invite is None:
-            raise KeyError(code)
+            raise InviteInvalid(code)
         user = auth_store.get_user(conn, invite["user_id"])
-        if user is None:
-            raise KeyError(code)
-        auth_store.mark_invite_used(conn, code)
+        if user is None or user["disabled"]:
+            raise InviteInvalid(code)
+        if not auth_store.consume_invite(conn, code, _invite_cutoff()):
+            raise InviteInvalid(code)
         token = secrets.token_urlsafe(32)
         expires_at = (datetime.now(UTC) + SESSION_TTL).isoformat(timespec="milliseconds")
         auth_store.create_session(conn, user["id"], token, expires_at)
@@ -49,13 +57,35 @@ def logout(token: str) -> None:
         auth_store.delete_session(conn, token)
 
 
-def create_tester_invite(display_name: str) -> dict[str, Any]:
+def create_tester(display_name: str) -> dict[str, Any]:
     with get_db().tx() as conn:
-        user = auth_store.create_user(conn, display_name.strip() or "Tester", is_owner=False)
-        invite = auth_store.create_invite(conn, user["id"])
-    return invite
+        user = auth_store.create_user(conn, display_name.strip()[:60] or "Tester", is_owner=False)
+        return auth_store.create_invite(conn, user["id"])
 
 
-def list_tester_invites() -> list[dict[str, Any]]:
+def list_testers() -> list[dict[str, Any]]:
     with get_db().read() as conn:
-        return auth_store.list_tester_invites(conn)
+        return auth_store.list_testers(conn, _invite_cutoff())
+
+
+def issue_new_link(user_id: str, keep_token: str | None) -> dict[str, Any]:
+    with get_db().tx() as conn:
+        user = auth_store.get_user(conn, user_id)
+        if user is None:
+            raise KeyError(user_id)
+        auth_store.delete_invites(conn, user_id)
+        auth_store.delete_sessions(conn, user_id, keep_token if user["is_owner"] else None)
+        auth_store.set_disabled(conn, user_id, False)
+        return auth_store.create_invite(conn, user_id)
+
+
+def revoke(user_id: str) -> None:
+    with get_db().tx() as conn:
+        user = auth_store.get_user(conn, user_id)
+        if user is None:
+            raise KeyError(user_id)
+        if user["is_owner"]:
+            raise AccessDenied(user_id)
+        auth_store.set_disabled(conn, user_id, True)
+        auth_store.delete_invites(conn, user_id)
+        auth_store.delete_sessions(conn, user_id)

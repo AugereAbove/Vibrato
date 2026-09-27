@@ -11,7 +11,7 @@ import { Callout, ErrorState, SkeletonLines } from '../../components/ui/Feedback
 import { Icon } from '../../components/ui/Icon'
 import { formatBytes } from '../../lib/format'
 import { keys, useModels, usePreferenceSchema, useSystemInfo } from '../../state/data'
-import { useAuth } from '../../state/auth'
+import { signOut, useAuth } from '../../state/auth'
 import { attempt } from '../../state/errors'
 import { getPref, resetPrefs, setPref, usePrefsStore } from '../../state/prefs'
 import { invalidate, useResource } from '../../state/resource'
@@ -321,74 +321,192 @@ function ModelsTool() {
 }
 
 function PrivacyTool() {
+  const user = useAuth((s) => s.user)
   return (
     <div className="setting-card card card-pad stack" style={{ gap: 6 }}>
       <div className="row">
         <Icon name="shield" size={16} />
-        <strong>Privacy</strong>
+        <strong className="grow">Privacy and account</strong>
+        <Button size="sm" variant="ghost" onClick={() => void signOut()}>
+          Sign out
+        </Button>
       </div>
       <p className="small muted">
-        Vibrato runs entirely on this computer. It has no accounts, sends no telemetry and makes no network
-        requests. Recordings, analyses and settings live in the data folder shown under Storage.
+        Signed in as <strong>{user?.display_name ?? '…'}</strong>. Your projects and recordings are private to
+        your account; other testers can't see them. Vibrato sends no telemetry, and all processing happens on
+        this server.
       </p>
     </div>
   )
 }
 
-function InviteTool() {
-  const invites = useResource('auth-invites', async () => (await authApi.listInvites()).invites)
+function inviteLink(code: string): string {
+  return `${window.location.origin}${authApi.claimUrl(code)}`
+}
+
+async function copyLink(code: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(inviteLink(code))
+    pushToast({ kind: 'success', title: 'Link copied' })
+  } catch {
+    pushToast({ kind: 'error', title: 'Could not copy', body: inviteLink(code) })
+  }
+}
+
+function LinkRow({ code }: { code: string }) {
+  return (
+    <div className="row" style={{ gap: 6 }}>
+      <code className="code-inline grow" style={{ overflowWrap: 'anywhere' }}>
+        {inviteLink(code)}
+      </code>
+      <Button size="xs" variant="ghost" icon="copy" onClick={() => void copyLink(code)}>
+        Copy
+      </Button>
+    </div>
+  )
+}
+
+function AccessTool() {
+  const me = useAuth((s) => s.user)
+  const users = useResource('auth-users', async () => (await authApi.listUsers()).users)
   const [name, setName] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [ownerLink, setOwnerLink] = useState<string | null>(null)
+
   const create = async () => {
-    setCreating(true)
-    const result = await attempt(() => authApi.createInvite(name.trim() || 'Tester'), 'Could not create invite')
-    setCreating(false)
+    setBusy(true)
+    const result = await attempt(
+      () => authApi.createInvite(name.trim() || 'Tester'),
+      'Could not create invite',
+    )
+    setBusy(false)
     if (result) {
       setName('')
-      await invites.refresh()
+      await users.refresh()
     }
   }
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
+  const newLink = async (id: string, label: string) => {
+    const ok = await confirmAction({
+      title: `Issue a new link for ${label}?`,
+      body: 'Their old link stops working and they are signed out on every device. Send them the new link to get back in.',
+      confirmLabel: 'Issue new link',
+    })
+    if (!ok) return
+    if (await attempt(() => authApi.newLink(id), 'Could not issue a new link')) await users.refresh()
+  }
+
+  const revoke = async (id: string, label: string) => {
+    const ok = await confirmAction({
+      title: `Revoke ${label}?`,
+      body: 'They are signed out everywhere and their links stop working. Their projects are kept; you can restore access later by issuing a new link.',
+      confirmLabel: 'Revoke access',
+      danger: true,
+    })
+    if (!ok) return
+    if (await attempt(() => authApi.revoke(id), 'Could not revoke access')) await users.refresh()
+  }
+
+  const rotateOwner = async () => {
+    if (!me) return
+    const ok = await confirmAction({
+      title: 'Issue a new owner link?',
+      body: 'Any old owner link stops working and you are signed out on every other device. This browser stays signed in.',
+      confirmLabel: 'Issue new owner link',
+    })
+    if (!ok) return
+    const result = await attempt(() => authApi.newLink(me.id), 'Could not issue a new owner link')
+    if (result) setOwnerLink(result.invite.code)
+  }
+
   return (
-    <div className="setting-card card card-pad stack" style={{ gap: 8 }}>
-      <div className="row">
-        <Icon name="users" size={16} />
-        <strong className="grow">Invite testers</strong>
-        <Button size="xs" variant="ghost" icon="refresh" onClick={() => void invites.refresh()}>
-          Refresh
-        </Button>
+    <div className="stack" style={{ gap: 12 }}>
+      <div className="setting-card card card-pad stack" style={{ gap: 8 }}>
+        <div className="row">
+          <Icon name="users" size={16} />
+          <strong className="grow">Testers</strong>
+          <Button size="xs" variant="ghost" icon="refresh" onClick={() => void users.refresh()}>
+            Refresh
+          </Button>
+        </div>
+        <p className="small muted">
+          Each tester has their own private projects. Links work once and expire after 14 days; if a tester
+          needs to sign in on another device, issue them a new link.
+        </p>
+        <div className="row">
+          <TextField
+            placeholder="Tester name"
+            value={name}
+            maxLength={60}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void create()
+            }}
+          />
+          <Button icon="plus" onClick={() => void create()} loading={busy}>
+            Add tester
+          </Button>
+        </div>
+        {users.loading && !users.data ? <SkeletonLines lines={3} /> : null}
+        {users.error ? <ErrorState error={users.error} onRetry={() => void users.refresh()} /> : null}
+        <ul className="plain-list stack" style={{ gap: 10 }}>
+          {(users.data ?? []).map((u) => (
+            <li key={u.id} className="stack" style={{ gap: 4 }}>
+              <div className="row small" style={{ gap: 8 }}>
+                <strong className="grow">{u.display_name}</strong>
+                {u.disabled ? (
+                  <Badge tone="bad">revoked</Badge>
+                ) : u.active_sessions > 0 ? (
+                  <Badge tone="good">signed in</Badge>
+                ) : u.pending_code ? (
+                  <Badge>link not used yet</Badge>
+                ) : (
+                  <Badge>no active link</Badge>
+                )}
+                <span className="faint">
+                  {u.projects} project{u.projects === 1 ? '' : 's'}
+                </span>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon="refresh"
+                  onClick={() => void newLink(u.id, u.display_name)}
+                >
+                  New link
+                </Button>
+                {!u.disabled ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    icon="x"
+                    onClick={() => void revoke(u.id, u.display_name)}
+                  >
+                    Revoke
+                  </Button>
+                ) : null}
+              </div>
+              {u.pending_code && !u.disabled ? <LinkRow code={u.pending_code} /> : null}
+            </li>
+          ))}
+          {(users.data ?? []).length === 0 && !users.loading ? (
+            <p className="muted">No testers yet.</p>
+          ) : null}
+        </ul>
       </div>
-      <p className="small muted">
-        Each invite is a separate tester with their own projects, invisible to other testers. Send them the
-        link below.
-      </p>
-      <div className="row">
-        <TextField
-          placeholder="Tester name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void create()
-          }}
-        />
-        <Button icon="plus" onClick={() => void create()} loading={creating}>
-          Create invite
-        </Button>
+      <div className="setting-card card card-pad stack" style={{ gap: 8 }}>
+        <div className="row">
+          <Icon name="shield" size={16} />
+          <strong className="grow">Owner access</strong>
+          <Button size="sm" variant="secondary" onClick={() => void rotateOwner()}>
+            Issue new owner link
+          </Button>
+        </div>
+        <p className="small muted">
+          Use this if an owner link may have been shared or seen by someone else. It only works once, so open
+          it on the device you want to sign in on.
+        </p>
+        {ownerLink ? <LinkRow code={ownerLink} /> : null}
       </div>
-      {invites.loading ? <SkeletonLines lines={3} /> : null}
-      {invites.error ? <ErrorState error={invites.error} onRetry={() => void invites.refresh()} /> : null}
-      <ul className="plain-list">
-        {(invites.data ?? []).map((invite) => (
-          <li key={invite.code} className="row small" style={{ gap: 8 }}>
-            <span className="grow">{invite.display_name}</span>
-            {invite.used_at ? <Badge tone="good">claimed</Badge> : <Badge>unused</Badge>}
-            <code className="code-inline">{`${origin}${authApi.claimUrl(invite.code)}`}</code>
-          </li>
-        ))}
-        {(invites.data ?? []).length === 0 && !invites.loading ? (
-          <p className="muted">No testers invited yet.</p>
-        ) : null}
-      </ul>
     </div>
   )
 }
@@ -471,7 +589,7 @@ export function SettingsView({ section }: { section?: string }) {
           {!query && active === 'Models' ? <ModelsTool /> : null}
           {!query && active === 'Storage' ? <StorageTool /> : null}
           {!query && active === 'Privacy' ? <PrivacyTool /> : null}
-          {!query && active === 'Access' && isOwner ? <InviteTool /> : null}
+          {!query && active === 'Access' && isOwner ? <AccessTool /> : null}
           <div className="setting-list">
             {filtered.map((item) => (
               <div key={item.key} className="setting-row">

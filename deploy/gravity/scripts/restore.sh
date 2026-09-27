@@ -35,6 +35,10 @@ mv "$DATA_DIR" "$SAFETY"
 echo "==> Extracting $ARCHIVE"
 mkdir -p "$(dirname "$DATA_DIR")"
 tar -C "$(dirname "$DATA_DIR")" -xzf "$ARCHIVE"
+if [ ! -f "$DATA_DIR/vibrato.db" ] && [ -f "$DATA_DIR/backups/host-snapshot.sqlite" ]; then
+  cp "$DATA_DIR/backups/host-snapshot.sqlite" "$DATA_DIR/vibrato.db"
+fi
+mkdir -p "$DATA_DIR/uploads"
 chown -R vibrato:vibrato "$DATA_DIR"
 
 echo "==> Starting the service"
