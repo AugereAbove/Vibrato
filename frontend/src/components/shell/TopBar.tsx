@@ -7,7 +7,7 @@ import { MenuButton } from '../ui/Menu'
 import { Tooltip } from '../ui/Tooltip'
 import { useProject, useSystemInfo } from '../../state/data'
 import { redo, undo, useHistory } from '../../state/history'
-import { setPref, usePref, useViewMode, type ViewMode } from '../../state/prefs'
+import { setPref, usePref, useResolvedTheme, useViewMode, type ViewMode } from '../../state/prefs'
 import { navigate, type ProjectTab, type Route } from '../../state/router'
 import { activeTasks, cancelTask, savingCount, subscribeSaving, useTaskStore } from '../../state/tasks'
 import { setUi } from '../../state/ui'
@@ -106,7 +106,8 @@ export function TopBar({ route }: { route: Route }) {
   const redoLabel = useHistory((s) => s.future[s.future.length - 1]?.label)
   const projectId = route.name === 'project' ? route.projectId : null
   const project = useProject(projectId)
-  const nextTheme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system'
+  const shown = useResolvedTheme()
+  const nextTheme = shown === 'dark' ? 'light' : 'dark'
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -206,8 +207,8 @@ export function TopBar({ route }: { route: Route }) {
           <kbd className="kbd">⌘K</kbd>
         </button>
         <IconButton
-          icon={theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'monitor'}
-          label={`Theme: ${theme} (switch to ${nextTheme})`}
+          icon={shown === 'dark' ? 'moon' : 'sun'}
+          label={`${shown === 'dark' ? 'Dark' : 'Light'} theme${theme === 'system' ? ' (following your system)' : ''} — switch to ${nextTheme}`}
           onClick={() => setPref('display.theme', nextTheme)}
         />
         <IconButton icon="sliders" label="Settings" onClick={() => navigate({ name: 'settings' })} />

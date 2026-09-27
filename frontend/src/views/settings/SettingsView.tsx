@@ -1,8 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { authApi, systemApi } from '../../api/endpoints'
 import type { PreferenceSchemaItem, PreferenceValue } from '../../api/types'
 import { measureLatency } from '../../audio/latency'
-import { listInputDevices, Recorder } from '../../audio/recorder'
+import {
+  deviceNamesHidden,
+  listInputDevices,
+  onInputDevicesChanged,
+  Recorder,
+  requestInputDevices,
+} from '../../audio/recorder'
+import { ActiveMic, InputMeter } from '../../components/ui/InputMeter'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Select, Slider, Switch, TextField, Checkbox } from '../../components/ui/Controls'
@@ -13,7 +20,7 @@ import { formatBytes } from '../../lib/format'
 import { keys, useModels, usePreferenceSchema, useSystemInfo } from '../../state/data'
 import { signOut, useAuth } from '../../state/auth'
 import { attempt } from '../../state/errors'
-import { getPref, resetPrefs, setPref, usePrefsStore } from '../../state/prefs'
+import { getPref, resetPrefs, setPref, usePrefsStore, useSystemTheme } from '../../state/prefs'
 import { invalidate, useResource } from '../../state/resource'
 import { navigate } from '../../state/router'
 import { pushToast } from '../../state/toasts'
@@ -204,30 +211,103 @@ function LatencyTool() {
 function DeviceTool() {
   const devices = useResource('input-devices', () => listInputDevices())
   const current = usePrefsStore((s) => s.values['audio.input_device'])
+  const selected = typeof current === 'string' ? current : ''
+  const [testing, setTesting] = useState<Recorder | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const hidden = deviceNamesHidden(devices.data ?? [])
+  const refreshDevices = useRef(devices.refresh)
+
+  useEffect(() => {
+    refreshDevices.current = devices.refresh
+  })
+
+  useEffect(() => onInputDevicesChanged(() => void refreshDevices.current()), [])
+
+  useEffect(() => () => testing?.close(), [testing])
+
+  const allow = async () => {
+    setError(null)
+    try {
+      await requestInputDevices()
+      await devices.refresh()
+    } catch {
+      setError(
+        'Microphone access was blocked. Allow it in your browser’s site settings (the icon next to the address bar), then try again.',
+      )
+    }
+  }
+
+  const startTest = async (deviceId: string) => {
+    setError(null)
+    testing?.close()
+    const recorder = new Recorder()
+    try {
+      await recorder.open(deviceId || null, 0)
+      setTesting(recorder)
+      await devices.refresh()
+    } catch {
+      recorder.close()
+      setTesting(null)
+      setError('That microphone could not be opened. It may be in use by another app or unplugged.')
+    }
+  }
+
+  const choose = (value: string) => {
+    setPref('audio.input_device', value || null)
+    if (testing) void startTest(value)
+  }
+
   return (
     <div className="setting-card card card-pad stack" style={{ gap: 8 }}>
       <div className="row">
         <Icon name="mic" size={16} />
         <strong className="grow">Microphone</strong>
-        <Button size="xs" variant="ghost" icon="refresh" onClick={() => void devices.refresh()}>
-          Refresh
-        </Button>
+        {testing ? (
+          <Button size="xs" variant="ghost" icon="stop" onClick={() => setTesting(null)}>
+            Stop test
+          </Button>
+        ) : (
+          <Button size="xs" variant="secondary" icon="mic" onClick={() => void startTest(selected)}>
+            Test microphone
+          </Button>
+        )}
       </div>
+      {hidden ? (
+        <Callout tone="info" title="Your browser is hiding microphone names">
+          Browsers only show which microphones you have after you allow access.
+          <div style={{ marginTop: 8 }}>
+            <Button size="sm" icon="mic" onClick={() => void allow()}>
+              Allow microphone access
+            </Button>
+          </div>
+        </Callout>
+      ) : null}
       <Select
         ariaLabel="Input device"
-        value={typeof current === 'string' ? current : ''}
-        onChange={(value) => setPref('audio.input_device', value || null)}
+        value={selected}
+        onChange={choose}
         options={[
-          { value: '', label: 'System default' },
-          ...(devices.data ?? []).map((d, i) => ({
-            value: d.deviceId,
-            label: d.label || `Input ${i + 1} (grant microphone access to see names)`,
-          })),
+          { value: '', label: 'System default (whatever your computer is set to use)' },
+          ...(devices.data ?? [])
+            .filter((d) => d.deviceId !== 'default')
+            .map((d, i) => ({ value: d.deviceId, label: d.label || `Microphone ${i + 1}` })),
         ]}
       />
+      {error ? (
+        <Callout tone="bad" title="Microphone problem">
+          {error}
+        </Callout>
+      ) : null}
+      {testing ? (
+        <>
+          <InputMeter recorder={testing} />
+          <ActiveMic recorder={testing} />
+        </>
+      ) : null}
       <p className="tiny faint">
-        Echo cancellation, noise suppression and automatic gain are always disabled while recording so
-        measurements stay accurate.
+        Tip: plugging in headphones can silently switch “System default” to the headset’s microphone. Pick
+        your microphone by name to be sure. Echo cancellation, noise suppression and automatic gain stay off
+        while recording so the measurements are accurate.
       </p>
     </div>
   )
@@ -336,6 +416,22 @@ function PrivacyTool() {
         your account; other testers can't see them. Vibrato sends no telemetry, and all processing happens on
         this server.
       </p>
+    </div>
+  )
+}
+
+function ThemeHint() {
+  const theme = usePrefsStore((s) => s.values['display.theme'])
+  const system = useSystemTheme()
+  return (
+    <div className="setting-card card card-pad row">
+      <Icon name={system === 'dark' ? 'moon' : 'sun'} size={16} />
+      <span className="grow small">
+        Your browser currently reports a <strong>{system}</strong> system theme
+        {theme === 'system' ? ', so Vibrato is using that.' : '.'} If that doesn’t match your computer,
+        Windows and browsers have separate settings: on Windows check Settings › Personalization › Colors ›
+        “Choose your default app mode”, and in Chrome or Edge check the Appearance settings.
+      </span>
     </div>
   )
 }
@@ -607,6 +703,7 @@ export function SettingsView({ section }: { section?: string }) {
               <p className="muted">No settings match “{query}”.</p>
             ) : null}
           </div>
+          {!query && active === 'Display' ? <ThemeHint /> : null}
           {!query && active === 'Display' ? (
             <div className="setting-card card card-pad row">
               <Icon name="layers" size={16} />

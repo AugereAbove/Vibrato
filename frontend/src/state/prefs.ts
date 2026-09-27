@@ -162,6 +162,10 @@ function systemReducedMotion(): boolean {
   return motionQuery ? motionQuery.matches : false
 }
 
+export function useSystemTheme(): 'dark' | 'light' {
+  return useSyncExternalStore(subscribeMedia, systemDark, () => true) ? 'dark' : 'light'
+}
+
 export function useResolvedTheme(): 'dark' | 'light' {
   const theme = usePref<string>('display.theme', 'system')
   const dark = useSyncExternalStore(subscribeMedia, systemDark, () => true)

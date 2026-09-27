@@ -23,7 +23,31 @@ const loadedContexts = new WeakSet<BaseAudioContext>()
 export async function listInputDevices(): Promise<MediaDeviceInfo[]> {
   if (!navigator.mediaDevices?.enumerateDevices) return []
   const devices = await navigator.mediaDevices.enumerateDevices()
-  return devices.filter((d) => d.kind === 'audioinput')
+  return devices.filter((d) => d.kind === 'audioinput' && d.deviceId !== '')
+}
+
+export function deviceNamesHidden(devices: MediaDeviceInfo[]): boolean {
+  return devices.length === 0 || devices.every((d) => !d.label)
+}
+
+export async function requestInputDevices(): Promise<MediaDeviceInfo[]> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  stream.getTracks().forEach((track) => track.stop())
+  return listInputDevices()
+}
+
+export function onInputDevicesChanged(listener: () => void): () => void {
+  navigator.mediaDevices?.addEventListener?.('devicechange', listener)
+  return () => navigator.mediaDevices?.removeEventListener?.('devicechange', listener)
+}
+
+const LOW_QUALITY_MIC = /hands-?free|headset|bluetooth|air ?pods|buds|\bbt\b|\bhfp\b/i
+
+export function micWarning(label: string, sampleRate?: number): string | null {
+  if (LOW_QUALITY_MIC.test(label) || (sampleRate !== undefined && sampleRate > 0 && sampleRate < 32000)) {
+    return 'This looks like a headset or Bluetooth microphone. Those record at phone-call quality, which makes pitch and voice analysis much less accurate. Choose your computer’s built-in microphone or a USB mic if you have one.'
+  }
+  return null
 }
 
 export function microphoneSupported(): boolean {
@@ -41,6 +65,7 @@ export class Recorder {
   private levelListeners = new Set<(level: LevelReading) => void>()
   private stopResolver: (() => void) | null = null
   deviceLabel = ''
+  deviceSampleRate: number | undefined = undefined
   inputLatency = 0
 
   get context(): AudioContext {
@@ -80,6 +105,7 @@ export class Recorder {
     this.deviceLabel = track?.label ?? ''
     const settings = (track?.getSettings?.() ?? {}) as MediaTrackSettings & { latency?: number }
     this.inputLatency = typeof settings.latency === 'number' ? settings.latency : 0
+    this.deviceSampleRate = typeof settings.sampleRate === 'number' ? settings.sampleRate : undefined
     if (!loadedContexts.has(ctx)) {
       await ctx.audioWorklet.addModule('/worklets/recorder-processor.js')
       loadedContexts.add(ctx)

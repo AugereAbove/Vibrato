@@ -4,18 +4,19 @@ import { engine } from '../../audio/engine'
 import { PitchTracker } from '../../audio/pitch'
 import {
   listInputDevices,
+  onInputDevicesChanged,
   Recorder,
   scheduleClick,
   trimCapture,
   type CapturedAudio,
 } from '../../audio/recorder'
+import { ActiveMic, InputMeter } from '../../components/ui/InputMeter'
 import { cssVar } from '../../components/timeline/useCanvas'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Segmented, Select, Slider, Switch, TextField } from '../../components/ui/Controls'
 import { Dialog } from '../../components/ui/Dialog'
 import { Callout } from '../../components/ui/Feedback'
-import { Icon } from '../../components/ui/Icon'
 import { formatSeconds, formatTime } from '../../lib/format'
 import { describeHz } from '../../lib/music'
 import { encodeWav, peakLevel, toDb } from '../../lib/wav'
@@ -35,79 +36,20 @@ interface Pass {
   keep: boolean
 }
 
-function guidance(peakDb: number): { tone: 'good' | 'warn' | 'bad' | 'info'; text: string } {
-  if (!Number.isFinite(peakDb) || peakDb < -50)
-    return { tone: 'info', text: 'Sing a few notes to check your level.' }
-  if (peakDb > -1)
-    return { tone: 'bad', text: 'Clipping: lower the input gain or move back from the microphone.' }
-  if (peakDb > -6) return { tone: 'warn', text: 'Hot: loud notes may clip. Lower the gain slightly.' }
-  if (peakDb < -30)
-    return { tone: 'warn', text: 'Quiet: move closer or raise the input gain so peaks reach about −12 dB.' }
-  return { tone: 'good', text: 'Good level.' }
+const BOOST_BELOW_PEAK = 10 ** (-12 / 20)
+const BOOST_TARGET_PEAK = 10 ** (-3 / 20)
+const MAX_BOOST = 10 ** (30 / 20)
+
+function boostGain(peak: number): number {
+  if (peak <= 0 || peak >= BOOST_BELOW_PEAK) return 1
+  return Math.min(MAX_BOOST, BOOST_TARGET_PEAK / peak)
 }
 
-function Meter({ recorder }: { recorder: Recorder | null }) {
-  const bar = useRef<HTMLSpanElement>(null)
-  const peakBar = useRef<HTMLSpanElement>(null)
-  const [peakDb, setPeakDb] = useState(-Infinity)
-  const [clipped, setClipped] = useState(false)
-  useEffect(() => {
-    if (!recorder) return
-    let hold = -Infinity
-    let holdTime = 0
-    let lastUpdate = 0
-    return recorder.onLevel((level) => {
-      const rmsDb = toDb(level.rms)
-      const pDb = toDb(level.peak)
-      const now = performance.now()
-      if (pDb > hold || now - holdTime > 1200) {
-        hold = pDb
-        holdTime = now
-      }
-      const toPct = (db: number) => `${Math.max(0, Math.min(100, ((db + 60) / 60) * 100))}%`
-      if (bar.current) bar.current.style.width = toPct(rmsDb)
-      if (peakBar.current) peakBar.current.style.left = toPct(hold)
-      if (level.peak >= 0.99) setClipped(true)
-      if (now - lastUpdate > 250) {
-        lastUpdate = now
-        setPeakDb(hold)
-      }
-    })
-  }, [recorder])
-  const hint = guidance(peakDb)
-  return (
-    <div className="stack" style={{ gap: 6 }}>
-      <div
-        className={`meter${clipped ? ' is-clipped' : ''}`}
-        role="meter"
-        aria-label="Input level"
-        aria-valuemin={-60}
-        aria-valuemax={0}
-        aria-valuenow={Number.isFinite(peakDb) ? Math.round(peakDb) : -60}
-      >
-        <span ref={bar} className="meter-fill" />
-        <span ref={peakBar} className="meter-peak" />
-        <span className="meter-scale" aria-hidden>
-          <span>−60</span>
-          <span>−30</span>
-          <span>−12</span>
-          <span>0 dB</span>
-        </span>
-      </div>
-      <div className="row small">
-        <span className={`${hint.tone}-text`}>
-          <Icon name={hint.tone === 'good' ? 'check' : hint.tone === 'info' ? 'info' : 'alert'} size={13} />{' '}
-          {hint.text}
-        </span>
-        <span className="spacer" />
-        {clipped ? (
-          <button type="button" className="link-button bad-text" onClick={() => setClipped(false)}>
-            Clipping detected · reset
-          </button>
-        ) : null}
-      </div>
-    </div>
-  )
+function applyGain(samples: Float32Array, gain: number): Float32Array {
+  if (gain === 1) return samples
+  const out = new Float32Array(samples.length)
+  for (let i = 0; i < samples.length; i += 1) out[i] = samples[i] * gain
+  return out
 }
 
 function LivePitch({ recorder }: { recorder: Recorder | null }) {
@@ -224,6 +166,7 @@ export function RecordDialog({
         ? { start: engine.position(), end: reference?.duration_s ?? engine.timelineDuration() }
         : null
 
+  const openMicRef = useRef<(id: string | null) => Promise<void>>(async () => undefined)
   const openMic = useCallback(async (id: string | null) => {
     setError(null)
     recorderRef.current?.close()
@@ -236,6 +179,16 @@ export function RecordDialog({
     } catch (reason) {
       next.close()
       const err = reason as DOMException
+      if (id && (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError')) {
+        setPref('audio.input_device', null)
+        pushToast({
+          kind: 'warning',
+          title: 'Saved microphone not found',
+          body: 'It may have been unplugged. Using the system default microphone instead.',
+        })
+        await openMicRef.current(null)
+        return
+      }
       if (err?.name === 'NotAllowedError')
         setError(
           'Microphone access was blocked. Allow microphone access for this page in your browser, then try again.',
@@ -245,6 +198,10 @@ export function RecordDialog({
       else setError(err?.message || String(reason))
     }
   }, [])
+
+  useEffect(() => {
+    openMicRef.current = openMic
+  }, [openMic])
 
   useEffect(() => {
     if (!open) return
@@ -267,6 +224,13 @@ export function RecordDialog({
   useEffect(() => {
     recorder?.setMonitorLevel(monitorLevel)
   }, [recorder, monitorLevel])
+
+  useEffect(() => {
+    if (!open) return
+    return onInputDevicesChanged(() => {
+      void listInputDevices().then(setDevices)
+    })
+  }, [open])
 
   const finish = useCallback(async () => {
     const current = session.current
@@ -383,7 +347,7 @@ export function RecordDialog({
     const synced = withReference && Boolean(reference) && (!target || target.start < 0.01)
     let last: Recording | null = null
     for (const [index, pass] of chosen.entries()) {
-      const blob = encodeWav(pass.samples, pass.sampleRate)
+      const blob = encodeWav(applyGain(pass.samples, boostGain(pass.peak)), pass.sampleRate)
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
       const takeName = chosen.length > 1 ? `${name} (${index + 1})` : name
       last = await importFile(
@@ -510,13 +474,22 @@ export function RecordDialog({
                 void openMic(value || null)
               }}
               options={[
-                { value: '', label: 'System default' },
-                ...devices.map((d, i) => ({ value: d.deviceId, label: d.label || `Input ${i + 1}` })),
+                {
+                  value: '',
+                  label:
+                    !deviceId && recorder?.deviceLabel
+                      ? `System default (${recorder.deviceLabel})`
+                      : 'System default',
+                },
+                ...devices
+                  .filter((d) => d.deviceId !== 'default')
+                  .map((d, i) => ({ value: d.deviceId, label: d.label || `Microphone ${i + 1}` })),
               ]}
             />
             <LivePitch recorder={recorder} />
           </div>
-          <Meter recorder={recorder} />
+          <InputMeter recorder={recorder} />
+          <ActiveMic recorder={recorder} />
           <Segmented
             ariaLabel="What to record"
             value={scope}
@@ -619,7 +592,7 @@ export function RecordDialog({
               {autoStop ? <span className="faint small">stops automatically at the end</span> : null}
             </div>
           )}
-          <Meter recorder={recorder} />
+          <InputMeter recorder={recorder} />
           <LivePitch recorder={recorder} />
         </div>
       ) : null}
@@ -660,6 +633,13 @@ export function RecordDialog({
                 {peakDb > -1 ? (
                   <p className="tiny bad-text">
                     This take clipped. Pitch and voice-quality measurements will have lower confidence.
+                  </p>
+                ) : null}
+                {boostGain(pass.peak) > 1 ? (
+                  <p className="tiny faint">
+                    This take is quiet, so its volume will be raised by{' '}
+                    {toDb(boostGain(pass.peak)).toFixed(0)} dB when saved. That helps note detection but can't
+                    remove background noise — getting closer to the microphone works better.
                   </p>
                 ) : null}
               </div>
