@@ -77,7 +77,7 @@ def list_tester_invites(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 def create_session(conn: sqlite3.Connection, user_id: str, token: str, expires_at: str) -> None:
     conn.execute(
-        "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO auth_sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
         (token, user_id, utcnow(), expires_at),
     )
 
@@ -85,11 +85,11 @@ def create_session(conn: sqlite3.Connection, user_id: str, token: str, expires_a
 def get_session_user(conn: sqlite3.Connection, token: str) -> dict[str, Any] | None:
     return row_to_dict(
         conn.execute(
-            "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > ?",
+            "SELECT u.* FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > ?",
             (token, utcnow()),
         ).fetchone()
     )
 
 
 def delete_session(conn: sqlite3.Connection, token: str) -> None:
-    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.execute("DELETE FROM auth_sessions WHERE token = ?", (token,))

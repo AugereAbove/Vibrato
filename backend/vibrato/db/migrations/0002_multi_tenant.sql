@@ -1,4 +1,6 @@
--- Multi-tenant auth: users, sessions, invites, and ownership scoping.
+-- Multi-tenant auth: users, auth_sessions, invites, and ownership scoping.
+-- Named `auth_sessions` (not `sessions`) because `sessions` already exists
+-- in 0001_initial.sql for practice/recording sessions.
 
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
@@ -7,15 +9,15 @@ CREATE TABLE users (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE sessions (
+CREATE TABLE auth_sessions (
   token TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
 
-CREATE INDEX idx_sessions_user ON sessions(user_id);
-CREATE INDEX idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id);
+CREATE INDEX idx_auth_sessions_expires ON auth_sessions(expires_at);
 
 CREATE TABLE invites (
   code TEXT PRIMARY KEY,
