@@ -107,6 +107,9 @@ export const http = {
   async put<T>(path: string, body: unknown): Promise<T> {
     return (await send(path, jsonInit('PUT', body))).json() as Promise<T>
   },
+  async putBinary<T>(path: string, body: Blob): Promise<T> {
+    return (await send(path, { method: 'PUT', body })).json() as Promise<T>
+  },
   async patch<T>(path: string, body: unknown): Promise<T> {
     return (await send(path, jsonInit('PATCH', body))).json() as Promise<T>
   },

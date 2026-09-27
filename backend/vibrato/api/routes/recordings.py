@@ -20,6 +20,7 @@ from ...tasks.manager import get_tasks
 from ..deps import User, ensure_owns_bookmark, ensure_owns_project, ensure_owns_recording, get_current_user
 from ..errors import NotFound
 from .common import save_upload
+from .uploads import take_completed_upload
 
 router = APIRouter(tags=["recordings"])
 MIN_SPEED = 0.25
@@ -106,7 +107,8 @@ def _with_role_issues(recording: dict[str, Any]) -> dict[str, Any]:
 @router.post("/projects/{project_id}/recordings")
 async def upload_recording(
     project_id: str,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    upload_id: str | None = Form(None),
     kind: str = Form("take"),
     name: str | None = Form(None),
     reference_id: str | None = Form(None),
@@ -122,7 +124,12 @@ async def upload_recording(
 ) -> dict[str, Any]:
     with get_db().read() as conn:
         ensure_owns_project(conn, project_id, user)
-    path, original = await save_upload(file)
+    if upload_id is not None:
+        path, original = take_completed_upload(upload_id, user)
+    elif file is not None:
+        path, original = await save_upload(file)
+    else:
+        raise NotFound("No file or completed upload was provided.")
     try:
         region = (
             (region_start_s, region_end_s)

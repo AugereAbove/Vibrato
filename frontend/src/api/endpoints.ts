@@ -111,10 +111,31 @@ export const projectsApi = {
   createDemo: () => http.post<{ task: Task }>('/demo'),
 }
 
+// Cloudflare Tunnel (used for the public hostname) caps a single request
+// body at ~100MB. Anything at or above this goes through the chunked
+// /uploads/* endpoints instead of one multipart POST.
+const CHUNKED_UPLOAD_THRESHOLD = 20 * 1024 * 1024
+const CHUNK_SIZE = 8 * 1024 * 1024
+
+async function uploadChunked(file: Blob, filename: string): Promise<string> {
+  const { upload_id } = await http.post<{ upload_id: string }>('/uploads', { filename })
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+  for (let index = 0; index < totalChunks; index++) {
+    const chunk = file.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE)
+    await http.putBinary(`/uploads/${upload_id}/chunk/${index}`, chunk)
+  }
+  await http.post(`/uploads/${upload_id}/complete`, { total_chunks: totalChunks })
+  return upload_id
+}
+
 export const recordingsApi = {
-  upload: (projectId: string, file: Blob, filename: string, options: UploadOptions) => {
+  upload: async (projectId: string, file: Blob, filename: string, options: UploadOptions) => {
     const form = new FormData()
-    form.append('file', file, filename)
+    if (file.size >= CHUNKED_UPLOAD_THRESHOLD) {
+      form.append('upload_id', await uploadChunked(file, filename))
+    } else {
+      form.append('file', file, filename)
+    }
     form.append('kind', options.kind)
     if (options.name) form.append('name', options.name)
     if (options.referenceId) form.append('reference_id', options.referenceId)

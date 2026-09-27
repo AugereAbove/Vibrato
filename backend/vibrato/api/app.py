@@ -18,7 +18,7 @@ from ..logging_setup import get_logger, setup_logging
 from ..services import auth_service
 from ..tasks.manager import get_tasks, init_tasks
 from .errors import install_error_handlers
-from .routes import analysis, auth, comparisons, extras, projects, recordings, system
+from .routes import analysis, auth, comparisons, extras, projects, recordings, system, uploads
 
 log = get_logger("app")
 
@@ -68,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     app.add_middleware(GZipMiddleware, minimum_size=2048)
     install_error_handlers(app)
-    for module in (auth, projects, recordings, analysis, comparisons, extras, system):
+    for module in (auth, projects, recordings, analysis, comparisons, extras, system, uploads):
         app.include_router(module.router, prefix="/api")
     dist = active.frontend_dist
     if dist is not None and (dist / "index.html").exists():
