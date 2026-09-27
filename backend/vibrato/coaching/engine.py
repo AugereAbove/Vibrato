@@ -12,6 +12,7 @@ from ..compare.model import MetricComparison
 from ..compare.view import RecordingView
 from ..util import to_jsonable
 from .knowledge import GUIDANCE, Guidance
+from .plain import lyric_places
 
 COACHING_VERSION = "coach/1.1"
 MIN_FINDING_CONFIDENCE = 0.45
@@ -374,6 +375,7 @@ def _attach_texts(
             "why": definition.why,
             "layers": list(guidance.layers),
         }
+    finding.texts["places"], finding.texts["lines"] = lyric_places(finding.instances, ref)
     finding.texts["confidence_label"] = confidence_label(finding.confidence)
     finding.texts["importance_label"] = importance_label(finding.importance)
     finding.texts["pattern"] = (

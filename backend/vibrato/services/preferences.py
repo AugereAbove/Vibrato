@@ -27,6 +27,7 @@ DEFAULTS: dict[str, Any] = {
     "models.crepe_model": "tiny",
     "display.theme": "system",
     "display.view_mode": "coach",
+    "display.results_view": "simple",
     "display.reduced_motion": "system",
     "display.spectrogram_resolution": "medium",
     "display.spectrogram_max_hz": 8000,
@@ -180,6 +181,14 @@ SCHEMA: list[dict[str, Any]] = [
         "type": "select",
         "options": ["coach", "analyst", "research"],
         "help": "Coach shows what to change; Analyst adds measurements; Research shows raw data and model details.",
+    },
+    {
+        "key": "display.results_view",
+        "section": "Display",
+        "label": "Results view",
+        "type": "select",
+        "options": ["simple", "full"],
+        "help": "Simple shows a short, plain-language summary of each take; Full shows the complete analysis workstation.",
     },
     {
         "key": "display.reduced_motion",

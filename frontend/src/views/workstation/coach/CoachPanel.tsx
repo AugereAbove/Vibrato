@@ -8,7 +8,7 @@ import { ScoreRing } from '../../../components/ui/Motion'
 import { Tooltip } from '../../../components/ui/Tooltip'
 import { categoryLabel } from '../../../lib/categories'
 import { formatPercent } from '../../../lib/format'
-import type { ViewMode } from '../../../state/prefs'
+import { setPref, type ViewMode } from '../../../state/prefs'
 import { setUi, useUi } from '../../../state/ui'
 import { useWorkspace } from '../../../state/workspace'
 import { applyFocus } from '../actions'
@@ -82,6 +82,9 @@ export function CoachPanel({
             />
           </span>
         </Tooltip>
+        <Button variant="ghost" icon="list" onClick={() => setPref('display.results_view', 'simple')}>
+          Simple view
+        </Button>
         <Button
           variant="ghost"
           icon="bulb"

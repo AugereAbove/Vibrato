@@ -412,6 +412,10 @@ export interface Finding {
     confidence_label: string
     importance_label: string
     pattern: string
+    places?: string[]
+    lines?: string[]
+    simple?: string
+    simple_tip?: string
   }
   evidence: FindingEvidence[]
   ranking: {
@@ -435,6 +439,7 @@ export interface AlreadyGood {
   category: CategoryId
   name: string
   text: string
+  simple?: string
   confidence: number
   count: number
   importance: number

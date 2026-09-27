@@ -16,7 +16,7 @@ import { formatTime } from '../../lib/format'
 import { useMediaQuery } from '../../lib/useMediaQuery'
 import { keys, useAlignmentPath, useBookmarks, useSections } from '../../state/data'
 import { attempt } from '../../state/errors'
-import type { ViewMode } from '../../state/prefs'
+import { useResultsView, type ViewMode } from '../../state/prefs'
 import { invalidate } from '../../state/resource'
 import { resetLayers, setUi, toggleLayer, useLayers, useUi, LIMITS } from '../../state/ui'
 import { nextPinId, useWorkspace } from '../../state/workspace'
@@ -34,6 +34,7 @@ import { RecordDialog } from './RecordDialog'
 import { openRecorder } from './recordStore'
 import { useWorkstationShortcuts } from './shortcuts'
 import { Sidebar } from './Sidebar'
+import { SimpleResults } from './simple/SimpleResults'
 import { TransportBar } from './TransportBar'
 import type { WorkstationData } from './useWorkstation'
 
@@ -108,6 +109,7 @@ export function Workstation({
   const bottomHeight = useUi((s) => s.bottomHeight)
   const bottomOpen = useUi((s) => s.bottomOpen)
   const narrow = useMediaQuery('(max-width: 900px)')
+  const simple = useResultsView() === 'simple'
   const layers = useLayers(mode)
   const bookmarks = useBookmarks(reference?.id ?? null)
   const sections = useSections(reference?.id ?? null)
@@ -127,6 +129,11 @@ export function Workstation({
   const focus = comparison?.coaching.findings.find((f) => f.key === focusKey) ?? null
   const refTask = reference ? data.recordingTasks.get(reference.id) : undefined
   const takeTask = take ? data.recordingTasks.get(take.id) : undefined
+  const simpleView =
+    simple &&
+    Boolean(take) &&
+    !data.comparisonError &&
+    Boolean(comparison || takeTask || data.comparisonLoading || data.comparisonId)
 
   const onAnchorMove = async (anchor: Anchor, userTime: number) => {
     const result = await attempt(
@@ -357,10 +364,18 @@ export function Workstation({
             </Button>
           </div>
         ) : null}
-        {comparison ? (
+        {simpleView ? (
+          comparison ? (
+            <SimpleResults comparison={comparison} take={take} />
+          ) : takeTask ? null : (
+            <div className="center-pad">
+              <SkeletonLines lines={6} />
+            </div>
+          )
+        ) : comparison ? (
           <CoachPanel comparison={comparison} mode={mode} projectId={projectId} take={take} />
         ) : null}
-        {data.refAnalysisStatus === 'ready' || data.refAnalysisStatus === 'none' ? (
+        {simpleView ? null : data.refAnalysisStatus === 'ready' || data.refAnalysisStatus === 'none' ? (
           <Timeline
             key={`${reference.id}:${take?.id ?? ''}`}
             model={data.model}
@@ -390,7 +405,7 @@ export function Workstation({
             <SkeletonLines lines={5} />
           </div>
         ) : null}
-        {bottomOpen ? (
+        {bottomOpen && !simpleView ? (
           <Splitter
             orientation="horizontal"
             label="Resize details panel"
@@ -399,11 +414,13 @@ export function Workstation({
             }
           />
         ) : null}
-        <div className="bottom-slot" style={{ height: bottomOpen ? bottomHeight : undefined }}>
-          <ErrorBoundary label="details panel" resetKey={`${take?.id}:${mode}`}>
-            <BottomPanel data={data} mode={mode} />
-          </ErrorBoundary>
-        </div>
+        {simpleView ? null : (
+          <div className="bottom-slot" style={{ height: bottomOpen ? bottomHeight : undefined }}>
+            <ErrorBoundary label="details panel" resetKey={`${take?.id}:${mode}`}>
+              <BottomPanel data={data} mode={mode} />
+            </ErrorBoundary>
+          </div>
+        )}
       </>
     )
   }

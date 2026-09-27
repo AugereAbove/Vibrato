@@ -18,6 +18,7 @@ const CACHE_KEY = 'vibrato.prefs.cache'
 const LOCAL_DEFAULTS: Record<string, PreferenceValue> = {
   'display.theme': 'system',
   'display.view_mode': 'coach',
+  'display.results_view': 'simple',
   'display.reduced_motion': 'system',
   'display.spectrogram_resolution': 'medium',
   'display.spectrogram_max_hz': 8000,
@@ -193,4 +194,10 @@ export type ViewMode = 'coach' | 'analyst' | 'research'
 export function useViewMode(): ViewMode {
   const mode = usePref<string>('display.view_mode', 'coach')
   return mode === 'analyst' || mode === 'research' ? mode : 'coach'
+}
+
+export type ResultsView = 'simple' | 'full'
+
+export function useResultsView(): ResultsView {
+  return usePref<string>('display.results_view', 'simple') === 'full' ? 'full' : 'simple'
 }

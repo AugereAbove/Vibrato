@@ -6,6 +6,7 @@ from typing import Any
 from ..alignment.aligner import ALIGNMENT_VERSION, Alignment, Anchor, align, realign_region
 from ..audio.errors import UserFacingError
 from ..coaching.engine import coaching_report, why_different
+from ..coaching.plain import enrich as plain_language
 from ..compare.comparator import COMPARISON_VERSION, compare
 from ..compare.model import MetricComparison
 from ..compare.scoring import category_scores
@@ -346,6 +347,8 @@ def comparison_payload(comparison_id: str) -> dict[str, Any]:
             "categories": best.get("category_scores"),
         }
     )
+    if isinstance(payload.get("coaching"), dict):
+        plain_language(payload["coaching"])
     payload["created_at"] = row["created_at"]
     payload["is_outdated"] = row["version"] != COMPARISON_VERSION
     return payload
