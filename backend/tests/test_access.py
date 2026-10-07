@@ -83,13 +83,29 @@ def test_invite_links_are_single_use(site: Site) -> None:
     assert bogus.headers["location"] == "/?invite=invalid"
 
 
-def test_expired_invites_are_rejected(site: Site) -> None:
+def test_tester_invites_never_expire_but_stay_single_use(site: Site) -> None:
     from vibrato.db import get_db
 
-    invite = site.owner.post("/api/auth/invites", json={"display_name": "Late"}).json()["invite"]
+    invite = site.owner.post("/api/auth/invites", json={"display_name": "Patient"}).json()["invite"]
     with get_db().tx() as conn:
         conn.execute("UPDATE invites SET created_at = '2000-01-01T00:00:00.000+00:00' WHERE code = ?", (invite["code"],))
-    response = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    first = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    assert first.headers["location"] == "/"
+    second = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    assert second.headers["location"] == "/?invite=invalid"
+
+
+def test_expired_owner_invites_are_rejected(site: Site) -> None:
+    from vibrato.db import get_db
+
+    with get_db().tx() as conn:
+        owner = conn.execute("SELECT id FROM users WHERE is_owner = 1").fetchone()["id"]
+        conn.execute("DELETE FROM invites WHERE user_id = ?", (owner,))
+        conn.execute(
+            "INSERT INTO invites (code, user_id, created_at) VALUES ('inv_old', ?, '2000-01-01T00:00:00.000+00:00')",
+            (owner,),
+        )
+    response = TestClient(site.app).get("/api/auth/claim/inv_old", follow_redirects=False)
     assert response.headers["location"] == "/?invite=invalid"
 
 

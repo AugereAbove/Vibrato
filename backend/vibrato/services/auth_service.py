@@ -65,7 +65,7 @@ def create_tester(display_name: str) -> dict[str, Any]:
 
 def list_testers() -> list[dict[str, Any]]:
     with get_db().read() as conn:
-        return auth_store.list_testers(conn, _invite_cutoff())
+        return auth_store.list_testers(conn)
 
 
 def issue_new_link(user_id: str, keep_token: str | None) -> dict[str, Any]:
