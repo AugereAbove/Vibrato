@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 
 from .config import get_settings
 from .db import connection
@@ -15,7 +17,11 @@ def main() -> None:
     commands.add_parser("list", help="List testers and their unused links.")
     args = parser.parse_args()
 
+    if "VIBRATO_DATA_DIR" not in os.environ:
+        sys.exit("Set VIBRATO_DATA_DIR to the install's data folder, e.g. VIBRATO_DATA_DIR=/opt/vibrato/data")
     settings = get_settings()
+    if not settings.db_path.exists():
+        sys.exit(f"No database at {settings.db_path}. Check VIBRATO_DATA_DIR.")
     connection._db = connection.Database(settings.db_path, settings.backups_dir)
     if args.command == "invite":
         link = auth_service.create_tester(args.name)
