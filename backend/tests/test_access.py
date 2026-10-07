@@ -83,16 +83,28 @@ def test_invite_links_are_single_use(site: Site) -> None:
     assert bogus.headers["location"] == "/?invite=invalid"
 
 
-def test_tester_invites_never_expire_but_stay_single_use(site: Site) -> None:
+def test_never_expires_invite_survives_but_stays_single_use(site: Site) -> None:
     from vibrato.db import get_db
 
-    invite = site.owner.post("/api/auth/invites", json={"display_name": "Patient"}).json()["invite"]
+    from vibrato.services import auth_service
+
+    invite = auth_service.create_tester("Patient", never_expires=True)
     with get_db().tx() as conn:
         conn.execute("UPDATE invites SET created_at = '2000-01-01T00:00:00.000+00:00' WHERE code = ?", (invite["code"],))
     first = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
     assert first.headers["location"] == "/"
     second = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
     assert second.headers["location"] == "/?invite=invalid"
+
+
+def test_ordinary_tester_invites_still_expire(site: Site) -> None:
+    from vibrato.db import get_db
+
+    invite = site.owner.post("/api/auth/invites", json={"display_name": "Late"}).json()["invite"]
+    with get_db().tx() as conn:
+        conn.execute("UPDATE invites SET created_at = '2000-01-01T00:00:00.000+00:00' WHERE code = ?", (invite["code"],))
+    response = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
+    assert response.headers["location"] == "/?invite=invalid"
 
 
 def test_expired_owner_invites_are_rejected(site: Site) -> None:

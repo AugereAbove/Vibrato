@@ -57,15 +57,15 @@ def logout(token: str) -> None:
         auth_store.delete_session(conn, token)
 
 
-def create_tester(display_name: str) -> dict[str, Any]:
+def create_tester(display_name: str, never_expires: bool = False) -> dict[str, Any]:
     with get_db().tx() as conn:
         user = auth_store.create_user(conn, display_name.strip()[:60] or "Tester", is_owner=False)
-        return auth_store.create_invite(conn, user["id"])
+        return auth_store.create_invite(conn, user["id"], never_expires)
 
 
 def list_testers() -> list[dict[str, Any]]:
     with get_db().read() as conn:
-        return auth_store.list_testers(conn)
+        return auth_store.list_testers(conn, _invite_cutoff())
 
 
 def issue_new_link(user_id: str, keep_token: str | None) -> dict[str, Any]:

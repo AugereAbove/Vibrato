@@ -12,8 +12,9 @@ from .services import auth_service
 def main() -> None:
     parser = argparse.ArgumentParser(prog="vibrato.manage", description="Manage tester access on a running install.")
     commands = parser.add_subparsers(dest="command", required=True)
-    invite = commands.add_parser("invite", help="Create a tester with a single-use sign-in link that never expires.")
+    invite = commands.add_parser("invite", help="Create a tester with a single-use sign-in link (expires after 14 days unless --never-expires).")
     invite.add_argument("name", nargs="?", default="Tester")
+    invite.add_argument("--never-expires", action="store_true", help="Link stays valid until it is claimed.")
     commands.add_parser("list", help="List testers and their unused links.")
     args = parser.parse_args()
 
@@ -24,8 +25,8 @@ def main() -> None:
         sys.exit(f"No database at {settings.db_path}. Check VIBRATO_DATA_DIR.")
     connection._db = connection.Database(settings.db_path, settings.backups_dir)
     if args.command == "invite":
-        link = auth_service.create_tester(args.name)
-        print(f"Single-use link for {args.name}:")
+        link = auth_service.create_tester(args.name, args.never_expires)
+        print(f"Single-use link for {args.name} ({'never expires' if args.never_expires else 'expires in 14 days'}):")
         print(f"/api/auth/claim/{link['code']}")
     else:
         for tester in auth_service.list_testers():

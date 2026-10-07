@@ -41,11 +41,11 @@ def set_disabled(conn: sqlite3.Connection, user_id: str, disabled: bool) -> None
     conn.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(disabled), user_id))
 
 
-def create_invite(conn: sqlite3.Connection, user_id: str) -> dict[str, Any]:
+def create_invite(conn: sqlite3.Connection, user_id: str, never_expires: bool = False) -> dict[str, Any]:
     code = new_id("inv")
     conn.execute(
-        "INSERT INTO invites (code, user_id, created_at) VALUES (?, ?, ?)",
-        (code, user_id, utcnow()),
+        "INSERT INTO invites (code, user_id, created_at, never_expires) VALUES (?, ?, ?, ?)",
+        (code, user_id, utcnow(), int(never_expires)),
     )
     invite = get_invite(conn, code)
     assert invite is not None
@@ -60,7 +60,7 @@ def find_usable_invite(conn: sqlite3.Connection, user_id: str, not_before: str) 
     return row_to_dict(
         conn.execute(
             "SELECT * FROM invites WHERE user_id = ? AND used_at IS NULL "
-            "AND (created_at > ? OR user_id IN (SELECT id FROM users WHERE is_owner = 0)) "
+            "AND (never_expires = 1 OR created_at > ?) "
             "ORDER BY created_at DESC LIMIT 1",
             (user_id, not_before),
         ).fetchone()
@@ -70,7 +70,7 @@ def find_usable_invite(conn: sqlite3.Connection, user_id: str, not_before: str) 
 def consume_invite(conn: sqlite3.Connection, code: str, not_before: str) -> bool:
     cursor = conn.execute(
         "UPDATE invites SET used_at = ? WHERE code = ? AND used_at IS NULL "
-        "AND (created_at > ? OR user_id IN (SELECT id FROM users WHERE is_owner = 0))",
+        "AND (never_expires = 1 OR created_at > ?)",
         (utcnow(), code, not_before),
     )
     return cursor.rowcount == 1
@@ -80,18 +80,18 @@ def delete_invites(conn: sqlite3.Connection, user_id: str) -> None:
     conn.execute("DELETE FROM invites WHERE user_id = ?", (user_id,))
 
 
-def list_testers(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def list_testers(conn: sqlite3.Connection, not_before: str) -> list[dict[str, Any]]:
     now = utcnow()
     return rows_to_dicts(
         conn.execute(
             "SELECT u.id, u.display_name, u.disabled, u.created_at, "
             "(SELECT i.code FROM invites i WHERE i.user_id = u.id AND i.used_at IS NULL "
-            " ORDER BY i.created_at DESC LIMIT 1) AS pending_code, "
+            " AND (i.never_expires = 1 OR i.created_at > ?) ORDER BY i.created_at DESC LIMIT 1) AS pending_code, "
             "(SELECT MAX(i.used_at) FROM invites i WHERE i.user_id = u.id) AS last_claimed_at, "
             "(SELECT COUNT(*) FROM auth_sessions s WHERE s.user_id = u.id AND s.expires_at > ?) AS active_sessions, "
             "(SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id) AS projects "
             "FROM users u WHERE u.is_owner = 0 ORDER BY u.created_at DESC",
-            (now,),
+            (not_before, now),
         ).fetchall()
     )
 

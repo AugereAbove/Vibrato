@@ -1,0 +1,1 @@
+ALTER TABLE invites ADD COLUMN never_expires INTEGER NOT NULL DEFAULT 0;
