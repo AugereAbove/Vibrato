@@ -1022,3 +1022,7 @@
   align-self: stretch;
   justify-content: center;
 }
+
+.login-card .login-error {
+  color: var(--bad);
+}

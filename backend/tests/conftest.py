@@ -83,16 +83,16 @@ def sign_in_owner(test_client: TestClient) -> None:
         owner = auth_store.find_owner(conn)
         assert owner is not None
         invite = auth_store.create_invite(conn, owner["id"])
-    response = test_client.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert response.status_code == 302 and response.headers["location"] == "/"
+    response = test_client.post("/api/auth/claim", json={"code": invite["code"]})
+    assert response.status_code == 200
 
 
 def sign_in_tester(test_client: TestClient, name: str = "Tester") -> str:
     from vibrato.services import auth_service
 
     invite = auth_service.create_tester(name)
-    response = test_client.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert response.status_code == 302 and response.headers["location"] == "/"
+    response = test_client.post("/api/auth/claim", json={"code": invite["code"]})
+    assert response.status_code == 200
     return str(invite["user_id"])
 
 

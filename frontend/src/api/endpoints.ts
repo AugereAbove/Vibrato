@@ -337,6 +337,7 @@ export const authApi = {
   me: (signal?: AbortSignal) => http.get<{ user: AuthUser }>('/auth/me', signal),
   logout: () => http.post<{ ok: boolean }>('/auth/logout'),
   claimUrl: (code: string) => http.url(`/auth/claim/${encodeURIComponent(code)}`),
+  claim: (code: string) => http.post<{ user: AuthUser }>('/auth/claim', { code }),
   listUsers: () => http.get<{ users: TesterAccount[] }>('/auth/users'),
   createInvite: (displayName: string) =>
     http.post<{ invite: Invite }>('/auth/invites', { display_name: displayName }),

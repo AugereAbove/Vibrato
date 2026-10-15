@@ -31,8 +31,8 @@ class Site:
     def tester(self, name: str = "Tester") -> TesterClient:
         invite = self.owner.post("/api/auth/invites", json={"display_name": name}).json()["invite"]
         client = TesterClient(self.app)
-        response = client.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-        assert response.status_code == 302 and response.headers["location"] == "/"
+        response = client.post("/api/auth/claim", json={"code": invite["code"]})
+        assert response.status_code == 200
         client.user_id = invite["user_id"]
         return client
 
@@ -75,12 +75,26 @@ def test_api_docs_are_hidden(site: Site) -> None:
 
 def test_invite_links_are_single_use(site: Site) -> None:
     invite = site.owner.post("/api/auth/invites", json={"display_name": "Once"}).json()["invite"]
-    first = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert first.headers["location"] == "/"
-    second = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert second.status_code == 302 and second.headers["location"] == "/?invite=invalid"
-    bogus = TestClient(site.app).get("/api/auth/claim/inv_nope", follow_redirects=False)
-    assert bogus.headers["location"] == "/?invite=invalid"
+    first = TestClient(site.app).post("/api/auth/claim", json={"code": invite["code"]})
+    assert first.status_code == 200
+    second = TestClient(site.app).post("/api/auth/claim", json={"code": invite["code"]})
+    assert second.status_code == 422
+    bogus = TestClient(site.app).post("/api/auth/claim", json={"code": "inv_nope"})
+    assert bogus.status_code == 422
+
+
+def test_opening_a_link_does_not_use_it_up(site: Site) -> None:
+    invite = site.owner.post("/api/auth/invites", json={"display_name": "Preview"}).json()["invite"]
+    code = invite["code"]
+    for _ in range(3):
+        opened = TestClient(site.app).get(f"/api/auth/claim/{code}", follow_redirects=False)
+        assert opened.status_code == 302 and opened.headers["location"] == f"/?claim={code}"
+        assert "set-cookie" not in opened.headers
+    signed_in = TestClient(site.app)
+    assert signed_in.post("/api/auth/claim", json={"code": code}).status_code == 200
+    assert signed_in.get("/api/auth/me").status_code == 200
+    again = TestClient(site.app).get(f"/api/auth/claim/{code}", follow_redirects=False)
+    assert again.headers["location"] == "/?invite=invalid"
 
 
 def test_never_expires_invite_survives_but_stays_single_use(site: Site) -> None:
@@ -91,10 +105,10 @@ def test_never_expires_invite_survives_but_stays_single_use(site: Site) -> None:
     invite = auth_service.create_tester("Patient", never_expires=True)
     with get_db().tx() as conn:
         conn.execute("UPDATE invites SET created_at = '2000-01-01T00:00:00.000+00:00' WHERE code = ?", (invite["code"],))
-    first = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert first.headers["location"] == "/"
-    second = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert second.headers["location"] == "/?invite=invalid"
+    first = TestClient(site.app).post("/api/auth/claim", json={"code": invite["code"]})
+    assert first.status_code == 200
+    second = TestClient(site.app).post("/api/auth/claim", json={"code": invite["code"]})
+    assert second.status_code == 422
 
 
 def test_ordinary_tester_invites_still_expire(site: Site) -> None:
@@ -103,8 +117,8 @@ def test_ordinary_tester_invites_still_expire(site: Site) -> None:
     invite = site.owner.post("/api/auth/invites", json={"display_name": "Late"}).json()["invite"]
     with get_db().tx() as conn:
         conn.execute("UPDATE invites SET created_at = '2000-01-01T00:00:00.000+00:00' WHERE code = ?", (invite["code"],))
-    response = TestClient(site.app).get(f"/api/auth/claim/{invite['code']}", follow_redirects=False)
-    assert response.headers["location"] == "/?invite=invalid"
+    response = TestClient(site.app).post("/api/auth/claim", json={"code": invite["code"]})
+    assert response.status_code == 422
 
 
 def test_expired_owner_invites_are_rejected(site: Site) -> None:
@@ -117,8 +131,8 @@ def test_expired_owner_invites_are_rejected(site: Site) -> None:
             "INSERT INTO invites (code, user_id, created_at) VALUES ('inv_old', ?, '2000-01-01T00:00:00.000+00:00')",
             (owner,),
         )
-    response = TestClient(site.app).get("/api/auth/claim/inv_old", follow_redirects=False)
-    assert response.headers["location"] == "/?invite=invalid"
+    response = TestClient(site.app).post("/api/auth/claim", json={"code": "inv_old"})
+    assert response.status_code == 422
 
 
 def test_testers_are_isolated_from_each_other_and_the_owner(site: Site) -> None:
@@ -166,7 +180,7 @@ def test_revoke_ends_sessions_and_new_link_restores_access(site: Site) -> None:
 
     invite = site.owner.post(f"/api/auth/users/{tester.user_id}/link").json()["invite"]
     again = TestClient(site.app)
-    assert again.get(f"/api/auth/claim/{invite['code']}", follow_redirects=False).headers["location"] == "/"
+    assert again.post("/api/auth/claim", json={"code": invite["code"]}).status_code == 200
     assert again.get("/api/auth/me").json()["user"]["id"] == tester.user_id
     assert tester.get("/api/auth/me").status_code == 401
 

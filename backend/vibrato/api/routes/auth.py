@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+from ...audio.errors import UserFacingError
 from ...services import auth_service
 from ..deps import SESSION_COOKIE, User, get_current_user, require_owner
 from ..errors import Forbidden, NotFound
@@ -15,6 +17,10 @@ router = APIRouter(tags=["auth"])
 
 class InviteCreate(BaseModel):
     display_name: str = "Tester"
+
+
+class ClaimBody(BaseModel):
+    code: str
 
 
 def _user_payload(user: User) -> dict[str, Any]:
@@ -27,12 +33,23 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
 
 
 @router.get("/auth/claim/{code}")
-def claim(code: str, request: Request) -> RedirectResponse:
+def open_link(code: str) -> RedirectResponse:
+    target = f"/?claim={quote(code, safe='')}" if auth_service.invite_usable(code) else "/?invite=invalid"
+    return RedirectResponse(url=target, status_code=302, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/auth/claim")
+def claim(body: ClaimBody, request: Request) -> JSONResponse:
     try:
-        _, token, max_age = auth_service.claim_invite(code)
+        user, token, max_age = auth_service.claim_invite(body.code.strip())
     except auth_service.InviteInvalid:
-        return RedirectResponse(url="/?invite=invalid", status_code=302)
-    response = RedirectResponse(url="/", status_code=302)
+        raise UserFacingError(
+            what="That link has already been used or has expired.",
+            why="Each sign-in link works once.",
+            action="Ask the project owner for a new one.",
+            code="invalid_invite",
+        ) from None
+    response = JSONResponse({"user": {"id": user["id"], "display_name": user["display_name"], "is_owner": bool(user["is_owner"])}})
     response.set_cookie(
         SESSION_COOKIE,
         token,

@@ -36,6 +36,17 @@ def bootstrap_owner() -> str | None:
         return auth_store.create_invite(conn, owner["id"])["code"]
 
 
+def invite_usable(code: str) -> bool:
+    with get_db().read() as conn:
+        invite = auth_store.get_invite(conn, code)
+        if invite is None or invite["used_at"] is not None:
+            return False
+        if not invite["never_expires"] and invite["created_at"] <= _invite_cutoff():
+            return False
+        user = auth_store.get_user(conn, invite["user_id"])
+        return user is not None and not user["disabled"]
+
+
 def claim_invite(code: str) -> tuple[dict[str, Any], str, int]:
     with get_db().tx() as conn:
         invite = auth_store.get_invite(conn, code)
